@@ -102,6 +102,8 @@ func getGCloudToken(ctx context.Context, logger interfaces.Logger) (string, erro
 }
 
 // getServiceAccountToken retrieves an access token using service account JSON
+//
+//nolint:unused // Reserved for future use with service account authentication
 func getServiceAccountToken(ctx context.Context, logger interfaces.Logger) (string, error) {
 	if logger != nil {
 		logger.Debugf("Attempting service account authentication...")

@@ -195,11 +195,12 @@ func initTestRegistry() {
 	})
 
 	// Register tool call events tests
-	registerTest("tool_call_events", func(ctx context.Context, llm llmtypes.Model, modelID string, provider string, logger interfaces.Logger) (bool, string) {
+	registerTest("tool_call_events", func(ctx context.Context, _ llmtypes.Model, modelID string, provider string, logger interfaces.Logger) (bool, string) {
 		// Create test event emitter to capture events
 		testEmitter := NewTestEventEmitter()
 		// Re-initialize LLM with event emitter
 		var err error
+		var llm llmtypes.Model
 		if provider == "openai" {
 			llm, err = llmproviders.InitializeLLM(llmproviders.Config{
 				Provider:     llmproviders.ProviderOpenAI,
@@ -416,9 +417,9 @@ func runTestWithProvider(testName, modelID, provider string, logger interfaces.L
 }
 
 func printSummary(results []testResult) {
-	log.Printf("\n" + strings.Repeat("=", 70))
-	log.Printf("📊 TEST SUITE SUMMARY")
-	log.Printf(strings.Repeat("=", 70))
+	log.Print("\n" + strings.Repeat("=", 70))
+	log.Print("📊 TEST SUITE SUMMARY")
+	log.Print(strings.Repeat("=", 70))
 
 	passed := 0
 	failed := 0

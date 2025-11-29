@@ -870,24 +870,6 @@ func extractMessageText(messages []llmtypes.MessageContent) string {
 	return ""
 }
 
-// extractIntValue safely extracts an integer value from interface{}
-func extractIntValue(v interface{}) int {
-	switch val := v.(type) {
-	case int:
-		return val
-	case int32:
-		return int(val)
-	case int64:
-		return int(val)
-	case float32:
-		return int(val)
-	case float64:
-		return int(val)
-	default:
-		return 0
-	}
-}
-
 // testLLMTokenUsageWithCache tests token usage with multi-turn conversation to verify cache token extraction
 // This creates a large context that gets cached, then makes a follow-up request that should use cached tokens
 func testLLMTokenUsageWithCache(ctx context.Context, llm llmtypes.Model) {

@@ -2,7 +2,6 @@ package shared
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 
@@ -307,24 +306,4 @@ func isProviderType(v interface{}) bool {
 	default:
 		return false
 	}
-}
-
-// validateTypeAssertions tests that type assertions work correctly
-// This simulates what adapters do when processing messages
-func validateTypeAssertions(parts []llmtypes.ContentPart) error {
-	for i, part := range parts {
-		switch part.(type) {
-		case llmtypes.TextContent:
-			// Good
-		case llmtypes.ImageContent:
-			// Good
-		case llmtypes.ToolCall:
-			// Good
-		case llmtypes.ToolCallResponse:
-			// Good
-		default:
-			return fmt.Errorf("part %d: unknown type %T that adapters can't handle", i, part)
-		}
-	}
-	return nil
 }

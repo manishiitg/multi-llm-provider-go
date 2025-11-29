@@ -545,6 +545,59 @@ The linter is configured in `.golangci.yml` with production-critical checks enab
 
 Style-only linters (gocritic) are disabled to focus on critical issues. See `.golangci.yml` for full configuration.
 
+## Security & Secret Scanning
+
+This project uses [gitleaks](https://github.com/gitleaks/gitleaks) to prevent accidental secret commits. The configuration is in `.gitleaks.toml`.
+
+### Pre-commit Hooks
+
+Install pre-commit hooks to automatically run linting and secret scanning before each commit:
+
+```bash
+# Install hooks (installs golangci-lint and gitleaks if needed)
+make install-hooks
+# or
+./scripts/install-git-hooks.sh
+```
+
+The pre-commit hook will:
+- Run `golangci-lint` to check code quality
+- Run `gitleaks` to scan for secrets
+- Block commits if any issues are found
+
+### Manual Secret Scanning
+
+```bash
+# Scan entire repository
+make scan-secrets
+# or
+./scripts/scan-secrets.sh
+
+# Scan specific path
+./scripts/scan-secrets.sh path/to/directory
+```
+
+## Continuous Integration
+
+GitHub Actions workflows automatically run on every push and pull request:
+
+### CI Workflow (`.github/workflows/ci.yml`)
+
+Runs on every push and PR to `main`, `master`, or `develop` branches:
+
+1. **Lint**: Runs `golangci-lint` to check code quality
+2. **Security Scan**: Runs `gitleaks` to detect secrets
+3. **Tests**: Runs all Go tests
+4. **Build**: Builds all binaries to ensure compilation succeeds
+
+### Security Scan Workflow (`.github/workflows/security-scan.yml`)
+
+Runs daily at 2 AM UTC and on every push/PR:
+- Comprehensive secret scanning with full git history
+- Uploads results to GitHub Security tab (SARIF format)
+
+All workflows can also be manually triggered from the GitHub Actions tab.
+
 ## API Documentation
 
 ### Core Types

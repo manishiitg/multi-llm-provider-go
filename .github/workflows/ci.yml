@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  lint:
+    name: Lint with golangci-lint
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.4'
+        cache-dependency-path: go.sum
+    
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: latest
+        args: --timeout=5m
+        working-directory: ./
+
+  security-scan:
+    name: Secret Scanning with Gitleaks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        # Fetch full history for comprehensive scanning
+        fetch-depth: 0
+    
+    - name: Run Gitleaks Secret Scan
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        # Use our custom configuration
+        config-path: .gitleaks.toml
+        # Fail the build if secrets are found
+        fail: true
+        # Show verbose output
+        verbose: true
+        # Redact secrets in output
+        redact: true
+        # Report format
+        format: sarif
+        # Output file
+        report-path: gitleaks-report.sarif
+    
+    - name: Upload Secret Scan Results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: gitleaks-report.sarif
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.4'
+        cache-dependency-path: go.sum
+    
+    - name: Run tests
+      run: go test ./... -v
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.4'
+        cache-dependency-path: go.sum
+    
+    - name: Build binaries
+      run: |
+        mkdir -p bin
+        go build -o bin/llm-test ./cmd/llm-test
+        go build -o bin/llm-chat ./cmd/llm-chat
+

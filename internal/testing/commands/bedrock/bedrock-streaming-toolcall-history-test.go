@@ -42,8 +42,8 @@ func runBedrockStreamingToolCallHistoryTest(cmd *cobra.Command, args []string) {
 	// Bind environment variables for viper
 	viper.SetEnvPrefix("")
 	viper.AutomaticEnv()
-	viper.BindEnv("log-file", "LOG_FILE")
-	viper.BindEnv("log-level", "LOG_LEVEL")
+	_ = viper.BindEnv("log-file", "LOG_FILE")   // Ignore error - env var binding is best effort
+	_ = viper.BindEnv("log-level", "LOG_LEVEL") // Ignore error - env var binding is best effort
 
 	logFile := viper.GetString("log-file")
 	if logFile == "" {

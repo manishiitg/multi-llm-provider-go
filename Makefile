@@ -1,4 +1,4 @@
-.PHONY: help lint lint-fix install-linter test build clean
+.PHONY: help lint lint-fix install-linter test build clean install-hooks scan-secrets
 
 # Default target
 help:
@@ -6,6 +6,8 @@ help:
 	@echo "  make lint        - Run golangci-lint"
 	@echo "  make lint-fix     - Run golangci-lint with auto-fix"
 	@echo "  make install-linter - Install golangci-lint"
+	@echo "  make install-hooks - Install pre-commit hooks (golangci-lint + gitleaks)"
+	@echo "  make scan-secrets - Scan repository for secrets with gitleaks"
 	@echo "  make test        - Run Go tests"
 	@echo "  make build       - Build the project"
 	@echo "  make clean       - Clean build artifacts"
@@ -47,6 +49,18 @@ build-chat:
 # Build all binaries
 build-all: build build-chat
 	@echo "All binaries built successfully"
+
+# Install pre-commit hooks
+install-hooks:
+	@echo "Installing pre-commit hooks..."
+	@chmod +x scripts/install-git-hooks.sh
+	@./scripts/install-git-hooks.sh
+
+# Scan for secrets
+scan-secrets:
+	@echo "Scanning for secrets..."
+	@chmod +x scripts/scan-secrets.sh
+	@./scripts/scan-secrets.sh
 
 # Clean build artifacts
 clean:

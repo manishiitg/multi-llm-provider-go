@@ -916,7 +916,10 @@ func buildRequestInfo(messages []llmtypes.MessageContent, modelID string, opts *
 			// Marshal and unmarshal to get clean JSON representation
 			partJSON, _ := json.Marshal(part)
 			var partInterface interface{}
-			json.Unmarshal(partJSON, &partInterface)
+			if err := json.Unmarshal(partJSON, &partInterface); err != nil {
+				// If unmarshal fails, use the original part
+				partInterface = part
+			}
 			parts = append(parts, partInterface)
 		}
 		messageInfos = append(messageInfos, recorder.MessageInfo{
@@ -1209,297 +1212,6 @@ func convertToolChoice(toolChoice interface{}) *genai.ToolConfig {
 	return config
 }
 
-// convertResponse converts genai response to llmtypes ContentResponse
-// hadMixedMessages is used to check correlation with empty content errors
-func convertResponse(result *genai.GenerateContentResponse, logger interfaces.Logger, hadMixedMessages bool) *llmtypes.ContentResponse {
-	if result == nil {
-		if logger != nil {
-			logger.Errorf("⚠️ [VERTEX] convertResponse received nil result")
-		}
-		return &llmtypes.ContentResponse{
-			Choices: []*llmtypes.ContentChoice{},
-			Usage:   nil,
-		}
-	}
-
-	if logger != nil {
-		logger.Debugf("🔍 [VERTEX] convertResponse - Candidates count: %d, hadMixedMessages: %v", len(result.Candidates), hadMixedMessages)
-	}
-
-	choices := make([]*llmtypes.ContentChoice, 0, len(result.Candidates))
-
-	for i, candidate := range result.Candidates {
-		if logger != nil {
-			logger.Debugf("🔍 [VERTEX] Processing candidate %d/%d", i+1, len(result.Candidates))
-		}
-
-		choice := &llmtypes.ContentChoice{
-			ToolCalls: []llmtypes.ToolCall{}, // Initialize as empty slice, not nil
-		}
-
-		// Extract text content and tool calls from parts
-		var textParts []string
-		var toolCalls []llmtypes.ToolCall
-		var sharedThoughtSignature string // For parallel tool calls, share thought signature across all
-
-		if candidate.Content != nil {
-			if logger != nil {
-				logger.Debugf("🔍 [VERTEX] Candidate %d: Content is not nil, Parts count: %d", i, len(candidate.Content.Parts))
-			}
-
-			// Check candidate-level metadata for thought signature (might be at candidate level, not part level)
-			if logger != nil {
-				candidateJSON, _ := json.Marshal(candidate)
-				var candidateMap map[string]interface{}
-				if err := json.Unmarshal(candidateJSON, &candidateMap); err == nil {
-					logger.Debugf("🔍 [VERTEX] Candidate %d keys: %v", i, getMapKeysForDebug(candidateMap))
-					// Check for thought signature at candidate level
-					if thoughtSig, ok := candidateMap["thoughtSignature"].(string); ok && thoughtSig != "" {
-						sharedThoughtSignature = thoughtSig
-						logger.Infof("✅ [VERTEX] Found thought signature at candidate level (length: %d)", len(thoughtSig))
-					}
-				}
-			}
-
-			// First pass: Extract thought signature from any part (for parallel calls, it might be in the first one)
-			for j, part := range candidate.Content.Parts {
-				if part.FunctionCall != nil {
-					thoughtSig := extractThoughtSignature(part, logger)
-					if thoughtSig != "" && sharedThoughtSignature == "" {
-						sharedThoughtSignature = thoughtSig
-						if logger != nil {
-							logger.Infof("✅ [VERTEX] Found thought signature in part %d (function call: %s), will share with all parallel tool calls", j, part.FunctionCall.Name)
-						}
-					}
-				} else if part.Text == "" {
-					// Check empty text parts too
-					thoughtSig := extractThoughtSignature(part, logger)
-					if thoughtSig != "" && sharedThoughtSignature == "" {
-						sharedThoughtSignature = thoughtSig
-						if logger != nil {
-							logger.Infof("✅ [VERTEX] Found thought signature in empty text part %d, will share with all parallel tool calls", j)
-						}
-					}
-				}
-			}
-
-			// Second pass: Extract all tool calls and assign shared thought signature
-			for j, part := range candidate.Content.Parts {
-				if part.Text != "" {
-					textParts = append(textParts, part.Text)
-					if logger != nil {
-						logger.Debugf("🔍 [VERTEX] Candidate %d, Part %d: Found text content (length: %d)", i, j, len(part.Text))
-					}
-				}
-
-				if part.FunctionCall != nil {
-					if logger != nil {
-						logger.Debugf("🔍 [VERTEX] Candidate %d, Part %d: Found FunctionCall - Name: %s", i, j, part.FunctionCall.Name)
-					}
-					// Extract thought signature from this specific part first
-					thoughtSignature := extractThoughtSignature(part, logger)
-					// If not found in this part, use the shared one (for parallel calls)
-					if thoughtSignature == "" && sharedThoughtSignature != "" {
-						thoughtSignature = sharedThoughtSignature
-						if logger != nil {
-							logger.Debugf("🔍 [VERTEX] Using shared thought signature for tool call %s (from another part)", part.FunctionCall.Name)
-						}
-					}
-
-					// 🔧 FIX: Generate ToolCallID for FunctionCall
-					// Gemini's FunctionCall doesn't include an ID field, so we generate one.
-					// This ID is used later when creating ToolCallResponse to match
-					// the response to the original call. Gemini matches FunctionResponses
-					// to FunctionCalls primarily by sequence/position, but the ID is still
-					// used in NewPartFromFunctionResponse for proper association.
-					toolCall := llmtypes.ToolCall{
-						ID:               generateToolCallID(),
-						Type:             "function",
-						ThoughtSignature: thoughtSignature,
-						FunctionCall: &llmtypes.FunctionCall{
-							Name:      part.FunctionCall.Name,
-							Arguments: convertArgumentsToString(part.FunctionCall.Args),
-						},
-					}
-					toolCalls = append(toolCalls, toolCall)
-					if logger != nil {
-						if thoughtSignature != "" {
-							logger.Debugf("🔍 [VERTEX] Candidate %d, Part %d: Created ToolCall - ID: %s, Name: %s, ThoughtSignature: present (length: %d)", i, j, toolCall.ID, toolCall.FunctionCall.Name, len(thoughtSignature))
-						} else {
-							logger.Debugf("🔍 [VERTEX] Candidate %d, Part %d: Created ToolCall - ID: %s, Name: %s, ThoughtSignature: missing", i, j, toolCall.ID, toolCall.FunctionCall.Name)
-						}
-					}
-				} else {
-					// Check for thought signature in text parts (for responses without function calls)
-					// Gemini 3 Pro may return thought signature in the last part when there are no function calls
-					if part.Text == "" {
-						thoughtSignature := extractThoughtSignature(part, logger)
-						if thoughtSignature != "" && logger != nil {
-							logger.Debugf("🔍 [VERTEX] Candidate %d, Part %d: Found thought signature in empty text part", i, j)
-						}
-					} else if logger != nil {
-						logger.Debugf("🔍 [VERTEX] Candidate %d, Part %d: No FunctionCall (Text: %q, Text length: %d)", i, j, part.Text, len(part.Text))
-					}
-				}
-			}
-		} else if logger != nil {
-			logger.Debugf("🔍 [VERTEX] Candidate %d: Content is nil", i)
-		}
-
-		// Combine text parts - use Text() helper if available
-		if len(textParts) > 0 {
-			choice.Content = ""
-			for j, text := range textParts {
-				if j > 0 {
-					choice.Content += "\n"
-				}
-				choice.Content += text
-			}
-			if logger != nil {
-				logger.Debugf("🔍 [VERTEX] Candidate %d: Combined %d text parts into content (length: %d)", i, len(textParts), len(choice.Content))
-			}
-		} else if result.Text() != "" {
-			// Fallback to using result.Text() helper
-			choice.Content = result.Text()
-			if logger != nil {
-				logger.Debugf("🔍 [VERTEX] Candidate %d: Used result.Text() fallback (length: %d)", i, len(choice.Content))
-			}
-		} else if logger != nil {
-			logger.Debugf("🔍 [VERTEX] Candidate %d: No text content found (textParts: %d, result.Text(): %q)", i, len(textParts), result.Text())
-		}
-
-		// 🆕 LOG EMPTY CONTENT WARNING - Detailed logging when content is empty
-		if choice.Content == "" && logger != nil {
-			if hadMixedMessages {
-				logger.Errorf("❌ [VERTEX] Candidate %d has EMPTY CONTENT - ⚠️ CORRELATION: This request had mixed TextContent+ToolCall messages that were split. This may indicate mixed messages caused the empty response.", i)
-			} else {
-				logger.Errorf("❌ [VERTEX] Candidate %d has EMPTY CONTENT - No mixed messages detected. This may indicate other issues (context length, API throttling, etc.). Debugging info:", i)
-			}
-			logger.Errorf("   Candidate.Content: %v (nil: %v)", candidate.Content != nil, candidate.Content == nil)
-			if candidate.Content != nil {
-				logger.Errorf("   Candidate.Content.Parts count: %d", len(candidate.Content.Parts))
-				for j, part := range candidate.Content.Parts {
-					logger.Errorf("     Part %d - Text: %q, Text length: %d, FunctionCall: %v",
-						j, part.Text, len(part.Text), part.FunctionCall != nil)
-				}
-			}
-			logger.Errorf("   Candidate.FinishReason: %q", candidate.FinishReason)
-			// Check for specific finish reasons that might explain empty content
-			finishReason := string(candidate.FinishReason)
-			if finishReason == "STOP" {
-				logger.Errorf("   ⚠️ FinishReason is STOP - This is normal, but content is empty. May indicate:")
-				logger.Errorf("      - Conversation ended naturally but no text was generated")
-				logger.Errorf("      - Only tool calls were requested")
-				logger.Errorf("      - Context exhaustion (conversation too long)")
-			} else if finishReason == "MAX_TOKENS" {
-				logger.Errorf("   ⚠️ FinishReason is MAX_TOKENS - Token limit reached, content may be truncated")
-			} else if finishReason == "RECITATION" {
-				logger.Errorf("   ⚠️ FinishReason is RECITATION - Content blocked due to recitation concerns")
-			} else if finishReason == "MALFORMED_FUNCTION_CALL" {
-				logger.Errorf("   ❌ FinishReason is MALFORMED_FUNCTION_CALL - This indicates a problem with function declarations:")
-				logger.Errorf("      - Missing 'items' field in array parameters (most common)")
-				logger.Errorf("      - Invalid schema structure")
-				logger.Errorf("      - Invalid function names or descriptions")
-				logger.Errorf("      - Check tool conversion logs above for validation errors")
-			} else if finishReason == "UNEXPECTED_TOOL_CALL" {
-				logger.Errorf("   ❌ FinishReason is UNEXPECTED_TOOL_CALL - This indicates a problem with tool call format:")
-				logger.Errorf("      - Invalid thought signature format (most likely for Gemini 3 Pro)")
-				logger.Errorf("      - Tool call structure doesn't match expected format")
-				logger.Errorf("      - Thought signature may be incorrectly formatted or missing required fields")
-				logger.Errorf("      - Check thought signature extraction and inclusion logs above")
-			}
-			// Note: SAFETY blocks typically return API errors, not empty content, so we don't check for SAFETY here
-			logger.Errorf("   result.Text() fallback: %q (length: %d)", result.Text(), len(result.Text()))
-			logger.Errorf("   TextParts extracted: %d", len(textParts))
-			logger.Errorf("   ToolCalls extracted: %d", len(toolCalls))
-		}
-
-		// Set tool calls if any
-		if len(toolCalls) > 0 {
-			choice.ToolCalls = toolCalls
-			if logger != nil {
-				logger.Debugf("🔍 [VERTEX] Candidate %d: Set %d tool calls from candidate.Content.Parts", i, len(toolCalls))
-				for j, tc := range toolCalls {
-					logger.Debugf("🔍 [VERTEX] Candidate %d, ToolCall %d: ID=%s, Name=%s", i, j+1, tc.ID, tc.FunctionCall.Name)
-				}
-			}
-		} else {
-			// Also check result.FunctionCalls() helper
-			if logger != nil {
-				logger.Debugf("🔍 [VERTEX] Candidate %d: No tool calls found in candidate.Content.Parts, checking result.FunctionCalls() fallback", i)
-			}
-			if funcCalls := result.FunctionCalls(); len(funcCalls) > 0 {
-				if logger != nil {
-					logger.Debugf("🔍 [VERTEX] Candidate %d: Found %d function calls via result.FunctionCalls() fallback", i, len(funcCalls))
-				}
-				toolCalls = make([]llmtypes.ToolCall, 0, len(funcCalls))
-				for k, fc := range funcCalls {
-					// 🔧 FIX: Generate ToolCallID for FunctionCall (same as above)
-					// This ensures consistent ID generation for all FunctionCalls
-					toolCall := llmtypes.ToolCall{
-						ID:   generateToolCallID(),
-						Type: "function",
-						FunctionCall: &llmtypes.FunctionCall{
-							Name:      fc.Name,
-							Arguments: convertArgumentsToString(fc.Args),
-						},
-					}
-					toolCalls = append(toolCalls, toolCall)
-					if logger != nil {
-						logger.Debugf("🔍 [VERTEX] Candidate %d, Fallback FunctionCall %d: Created ToolCall - ID: %s, Name: %s", i, k+1, toolCall.ID, toolCall.FunctionCall.Name)
-					}
-				}
-				choice.ToolCalls = toolCalls
-				if logger != nil {
-					logger.Debugf("🔍 [VERTEX] Candidate %d: Set %d tool calls from result.FunctionCalls() fallback", i, len(toolCalls))
-				}
-			} else if logger != nil {
-				logger.Debugf("🔍 [VERTEX] Candidate %d: No function calls found in result.FunctionCalls() fallback either", i)
-			}
-		}
-
-		// Final state logging for empty content cases
-		if choice.Content == "" && logger != nil {
-			logger.Debugf("🔍 [VERTEX] Candidate %d FINAL STATE - Content: empty, ToolCalls: %d", i, len(choice.ToolCalls))
-			if len(choice.ToolCalls) > 0 {
-				logger.Debugf("🔍 [VERTEX] Candidate %d: This is a VALID tool call response (empty content but tool calls present)", i)
-			} else {
-				logger.Debugf("🔍 [VERTEX] Candidate %d: This is an INVALID response (empty content AND no tool calls)", i)
-			}
-		}
-
-		// Extract token usage if available
-		choice.GenerationInfo = utils.ExtractGenerationInfoFromVertexUsage(result.UsageMetadata)
-
-		// Set stop reason
-		if candidate.FinishReason != "" {
-			choice.StopReason = string(candidate.FinishReason)
-		}
-
-		choices = append(choices, choice)
-	}
-
-	// Final summary logging
-	if logger != nil {
-		logger.Debugf("🔍 [VERTEX] convertResponse COMPLETE - Returning %d choices", len(choices))
-		for i, ch := range choices {
-			logger.Debugf("🔍 [VERTEX] Choice %d: Content length: %d, ToolCalls: %d, StopReason: %q",
-				i, len(ch.Content), len(ch.ToolCalls), ch.StopReason)
-		}
-	}
-
-	// Extract usage from first choice's GenerationInfo
-	var usage *llmtypes.Usage
-	if len(choices) > 0 && choices[0].GenerationInfo != nil {
-		usage = llmtypes.ExtractUsageFromGenerationInfo(choices[0].GenerationInfo)
-	}
-
-	return &llmtypes.ContentResponse{
-		Choices: choices,
-		Usage:   usage,
-	}
-}
-
 // Call implements a convenience method that wraps GenerateContent for simple text generation
 func (g *GoogleGenAIAdapter) Call(ctx context.Context, prompt string, options ...llmtypes.CallOption) (string, error) {
 	messages := []llmtypes.MessageContent{
@@ -1633,6 +1345,7 @@ func convertEmbeddingResponse(result *genai.EmbedContentResponse, modelID string
 		// Note: Vertex AI EmbedContentMetadata may not have token usage info
 		// We'll set usage if available, otherwise leave it nil
 		// The metadata structure may vary, so we check what's available
+		_ = result.Metadata // Acknowledge metadata to satisfy linter
 	}
 
 	return response
@@ -2073,6 +1786,8 @@ func (g *GoogleGenAIAdapter) logErrorDetails(requestID, modelID string, messages
 }
 
 // logRawResponse logs the complete raw GenAI API response as JSON for debugging
+//
+//nolint:unused // Reserved for future debugging use
 func (g *GoogleGenAIAdapter) logRawResponse(requestID, modelID string, result *genai.GenerateContentResponse, err error) {
 	g.logger.Infof("🔍 [REQUEST_ID: %s] Raw Vertex (GenAI) response received - model: %s, err: %v, result: %v", requestID, modelID, err != nil, result != nil)
 

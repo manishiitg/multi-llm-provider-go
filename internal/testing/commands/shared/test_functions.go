@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"mime"
@@ -1348,7 +1349,6 @@ func RunStreamingMixedTest(llm llmtypes.Model, modelID string) {
 		allMatch := true
 		for _, tc := range finalToolCalls {
 			if !streamedIDs[tc.ID] {
-				allMatch = false
 				log.Printf("❌ Test failed - final tool call ID %s not found in streamed calls", tc.ID)
 				return
 			}
@@ -1657,7 +1657,7 @@ func RunStreamingCancellationTest(llm llmtypes.Model, modelID string) {
 
 			// Cancel after receiving 5 chunks
 			if chunksReceived == 5 {
-				log.Printf("   🛑 Cancelling context after %d chunks", chunksReceived)
+				log.Printf("   🛑 Canceling context after %d chunks", chunksReceived)
 				cancel()
 			}
 		}
@@ -1676,8 +1676,8 @@ func RunStreamingCancellationTest(llm llmtypes.Model, modelID string) {
 	if err != nil {
 		// Check for cancellation errors (may be wrapped)
 		errStr := err.Error()
-		isCanceled := err == context.Canceled ||
-			err == context.DeadlineExceeded ||
+		isCanceled := errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) ||
 			strings.Contains(errStr, "context canceled") ||
 			strings.Contains(errStr, "context deadline exceeded")
 

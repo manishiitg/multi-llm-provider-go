@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -28,6 +29,7 @@ func safeCloseChannel(ch chan llmtypes.StreamChunk) {
 	defer func() {
 		if r := recover(); r != nil {
 			// Channel already closed, ignore panic
+			_ = r // Acknowledge the recovered value to satisfy linter
 		}
 	}()
 	close(ch)
@@ -329,7 +331,7 @@ func RunChat() error {
 		// Handle commands
 		if strings.HasPrefix(text, "/") {
 			if err := handleCommand(text, conv, tools); err != nil {
-				if err == errExit {
+				if errors.Is(err, errExit) {
 					fmt.Println("\nGoodbye!")
 					return nil
 				}

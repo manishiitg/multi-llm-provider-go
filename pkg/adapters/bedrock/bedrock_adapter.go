@@ -816,9 +816,8 @@ func (b *BedrockAdapter) processRecordedEvents(ctx context.Context, recordedEven
 					}
 				}
 			}
-		} else if stopReason, hasStopReason := valueMap["StopReason"].(string); hasStopReason {
-			// This is a MessageStop event
-			stopReason = stopReason
+		} else if _, hasStopReason := valueMap["StopReason"].(string); hasStopReason {
+			// This is a MessageStop event - stopReason value is not needed here
 		} else if usageMap, hasUsage := valueMap["Usage"].(map[string]interface{}); hasUsage {
 			// This is a Metadata event - reconstruct TokenUsage
 			usageJSON, _ := json.Marshal(usageMap)
@@ -893,7 +892,10 @@ func buildRequestInfo(messages []llmtypes.MessageContent, modelID string, opts *
 			// Marshal and unmarshal to get clean JSON representation
 			partJSON, _ := json.Marshal(part)
 			var partInterface interface{}
-			json.Unmarshal(partJSON, &partInterface)
+			if err := json.Unmarshal(partJSON, &partInterface); err != nil {
+				// If unmarshal fails, use the original part
+				partInterface = part
+			}
 			parts = append(parts, partInterface)
 		}
 		messageInfos = append(messageInfos, recorder.MessageInfo{
@@ -1134,6 +1136,8 @@ func convertToolChoiceToConverse(toolChoice interface{}) types.ToolChoice {
 }
 
 // convertConverseResponse converts Converse API response to llmtypes.ContentResponse format
+//
+//nolint:unused // Reserved for future use with Converse API
 func convertConverseResponse(result *bedrockruntime.ConverseOutput) *llmtypes.ContentResponse {
 	resp := &llmtypes.ContentResponse{
 		Choices: []*llmtypes.ContentChoice{},

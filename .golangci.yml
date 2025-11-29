@@ -73,7 +73,7 @@ linters-settings:
   
   # goimports settings
   goimports:
-    local-prefixes: llm-providers
+    local-prefixes: github.com/manishiitg/multi-llm-provider-go
   
   # gocritic settings
   gocritic:
@@ -147,6 +147,7 @@ issues:
   exclude-dirs:
     - bin
     - vendor
+    - testdata
   
   # Which files to skip
   exclude-files:

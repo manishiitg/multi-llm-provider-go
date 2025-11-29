@@ -1708,7 +1708,10 @@ func buildRequestInfo(messages []llmtypes.MessageContent, modelID string, opts *
 			// Marshal and unmarshal to get clean JSON representation
 			partJSON, _ := json.Marshal(part)
 			var partInterface interface{}
-			json.Unmarshal(partJSON, &partInterface)
+			if err := json.Unmarshal(partJSON, &partInterface); err != nil {
+				// If unmarshal fails, use the original part
+				partInterface = part
+			}
 			parts = append(parts, partInterface)
 		}
 		messageInfos = append(messageInfos, recorder.MessageInfo{
