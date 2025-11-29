@@ -26,3 +26,6 @@ logs/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Act secrets (local testing)
+.secrets

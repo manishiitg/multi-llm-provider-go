@@ -96,8 +96,38 @@ jobs:
         cache-dependency-path: go.sum
     
     - name: Build binaries
+      working-directory: ${{ github.workspace }}
       run: |
         mkdir -p bin
         go build -o bin/llm-test ./cmd/llm-test
         go build -o bin/llm-chat ./cmd/llm-chat
+
+  test-suite:
+    name: Run Test Suite
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.4'
+        cache-dependency-path: go.sum
+    
+    - name: Build test binary
+      working-directory: ${{ github.workspace }}
+      run: |
+        mkdir -p bin
+        go build -o bin/llm-test ./cmd/llm-test
+    
+    - name: Run test suite
+      working-directory: ${{ github.workspace }}
+      run: ./bin/llm-test test-suite
+      env:
+        # Test suite runs in replay mode, so API keys are not actually used
+        # But the command checks for them, so we provide a dummy value
+        VERTEX_API_KEY: "dummy-key-for-replay-mode"
+        GOOGLE_API_KEY: "dummy-key-for-replay-mode"
 

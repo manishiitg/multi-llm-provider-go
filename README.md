@@ -587,8 +587,12 @@ Runs on every push and PR to `main`, `master`, or `develop` branches:
 
 1. **Lint**: Runs `golangci-lint` to check code quality
 2. **Security Scan**: Runs `gitleaks` to detect secrets
-3. **Tests**: Runs all Go tests
+3. **Tests**: Runs all Go tests (`go test ./...`)
 4. **Build**: Builds all binaries to ensure compilation succeeds
+5. **Test Suite**: Runs the full test suite (`./bin/llm-test test-suite`) in replay mode
+   - Automatically discovers and runs all recorded tests
+   - Validates all test scenarios without making real API calls
+   - Fast execution (~200-500µs per test)
 
 ### Security Scan Workflow (`.github/workflows/security-scan.yml`)
 
@@ -597,6 +601,29 @@ Runs daily at 2 AM UTC and on every push/PR:
 - Uploads results to GitHub Security tab (SARIF format)
 
 All workflows can also be manually triggered from the GitHub Actions tab.
+
+### Local CI Testing
+
+You can test GitHub Actions workflows locally using [act](https://github.com/nektos/act):
+
+```bash
+# Install act
+make install-act
+
+# List available jobs
+make list-ci-jobs
+
+# Run all CI jobs locally (can be slow on first run)
+make test-ci
+
+# Run a specific job
+make test-ci-job JOB=lint
+make test-ci-job JOB=test-suite
+```
+
+⚠️ **Note**: Act can be slow on first run (5-10 minutes) while pulling Docker images. Output may not appear immediately - be patient.
+
+See [docs/LOCAL_CI_TESTING.md](docs/LOCAL_CI_TESTING.md) for detailed instructions and troubleshooting.
 
 ## API Documentation
 
