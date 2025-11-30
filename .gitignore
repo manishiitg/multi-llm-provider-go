@@ -9,7 +9,8 @@ bin/
 *.so
 *.dylib
 
-# Test binary
+# Test binary (only ignore the binary, not the source directory)
+/bin/llm-test
 llm-test
 
 # Logs
@@ -29,3 +30,5 @@ Thumbs.db
 
 # Act secrets (local testing)
 .secrets
+
+.cursor/
