@@ -9,9 +9,10 @@ bin/
 *.so
 *.dylib
 
-# Test binary (only ignore the binary, not the source directory)
+# Test binary (only ignore the binary file in root or bin/, not source directories)
 /bin/llm-test
-llm-test
+/llm-test
+!cmd/llm-test/
 
 # Logs
 *.log
