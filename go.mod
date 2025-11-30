@@ -1,6 +1,6 @@
 module github.com/manishiitg/multi-llm-provider-go
 
-go 1.23
+go 1.24
 
 require (
 	cloud.google.com/go/auth v0.14.0
