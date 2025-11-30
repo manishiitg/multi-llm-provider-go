@@ -62,7 +62,7 @@ func runVertexToolCallEventsTest(cmd *cobra.Command, args []string) {
 	}
 
 	// Set API key as environment variable
-	os.Setenv("VERTEX_API_KEY", apiKey)
+	_ = os.Setenv("VERTEX_API_KEY", apiKey) //nolint:errcheck // Test code, safe to ignore
 
 	ctx := context.Background()
 

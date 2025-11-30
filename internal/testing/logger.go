@@ -49,15 +49,15 @@ func SetTestLogger(logger interfaces.Logger) {
 
 // SimpleLogger implementation
 func (l *SimpleLogger) Infof(format string, v ...any) {
-	fmt.Fprintf(l.output, "[INFO] "+format+"\n", v...)
+	_, _ = fmt.Fprintf(l.output, "[INFO] "+format+"\n", v...) //nolint:errcheck // Logging to stdout/stderr, safe to ignore
 }
 
 func (l *SimpleLogger) Errorf(format string, v ...any) {
-	fmt.Fprintf(l.output, "[ERROR] "+format+"\n", v...)
+	_, _ = fmt.Fprintf(l.output, "[ERROR] "+format+"\n", v...) //nolint:errcheck // Logging to stdout/stderr, safe to ignore
 }
 
 func (l *SimpleLogger) Debugf(format string, args ...interface{}) {
 	if l.level == "debug" {
-		fmt.Fprintf(l.output, "[DEBUG] "+format+"\n", args...)
+		_, _ = fmt.Fprintf(l.output, "[DEBUG] "+format+"\n", args...) //nolint:errcheck // Logging to stdout/stderr, safe to ignore
 	}
 }

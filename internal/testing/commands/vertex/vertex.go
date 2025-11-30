@@ -59,7 +59,7 @@ func runVertex(cmd *cobra.Command, args []string) {
 	}
 
 	// Set API key as environment variable for internal LLM provider to pick up
-	os.Setenv("VERTEX_API_KEY", apiKey)
+	_ = os.Setenv("VERTEX_API_KEY", apiKey) //nolint:errcheck // Test code, safe to ignore
 
 	ctx := context.Background()
 
