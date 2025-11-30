@@ -12,8 +12,8 @@ run:
 # Output configuration
 output:
   # Format: colored-line-number|line-number|json|tab|checkstyle|code-climate|html|junit-xml|github-actions
-  formats:
-    - format: colored-line-number
+  # In v2.x, use format (singular) instead of formats
+  format: colored-line-number
   # Print linter name in issue line
   print-issued-lines: true
   # Print linter name in unused line
