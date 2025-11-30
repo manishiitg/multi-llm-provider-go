@@ -23,7 +23,7 @@ jobs:
         cache-dependency-path: go.sum
     
     - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v6
+      uses: golangci/golangci-lint-action@v7
       with:
         # Use v2.4.0 or later for Go 1.24 support
         version: v2.4.0
