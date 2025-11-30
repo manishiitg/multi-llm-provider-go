@@ -95,8 +95,14 @@ jobs:
         go-version: '1.24.4'
         cache-dependency-path: go.sum
     
+    - name: Verify checkout and list directories
+      run: |
+        pwd
+        ls -la
+        ls -la cmd/ || echo "cmd directory not found"
+        ls -la cmd/llm-test/ || echo "cmd/llm-test directory not found"
+    
     - name: Build binaries
-      working-directory: ${{ github.workspace }}
       run: |
         mkdir -p bin
         go build -o bin/llm-test ./cmd/llm-test
@@ -116,14 +122,19 @@ jobs:
         go-version: '1.24.4'
         cache-dependency-path: go.sum
     
+    - name: Verify checkout and list directories
+      run: |
+        pwd
+        ls -la
+        ls -la cmd/ || echo "cmd directory not found"
+        ls -la cmd/llm-test/ || echo "cmd/llm-test directory not found"
+    
     - name: Build test binary
-      working-directory: ${{ github.workspace }}
       run: |
         mkdir -p bin
         go build -o bin/llm-test ./cmd/llm-test
     
     - name: Run test suite
-      working-directory: ${{ github.workspace }}
       run: ./bin/llm-test test-suite
       env:
         # Test suite runs in replay mode, so API keys are not actually used
