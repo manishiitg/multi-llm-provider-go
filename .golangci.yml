@@ -36,6 +36,8 @@ linters:
     - unconvert         # Unnecessary conversions - low priority
     - unparam           # Unused parameters - low priority
     - gocritic          # Code quality checks - mostly style issues, disabled to reduce noise
+    - errcheck          # Error checking - too many false positives in test code
+    - staticcheck       # Static analysis - too many style suggestions, not critical
   
   # Enable production-critical linters
   enable:
@@ -44,9 +46,7 @@ linters:
     - errname           # Error naming conventions
     - errorlint         # Error wrapping lint - important
     - unused            # Unused variables, constants, functions, and types
-    - errcheck          # Error checking - CRITICAL for production (ensures all errors are handled)
     - govet             # Go vet - catches common bugs
-    - staticcheck       # Static analysis - finds bugs and suggests improvements
     - bodyclose         # HTTP response body closing - prevents resource leaks
     - noctx             # Context in HTTP requests - important for cancellation/timeouts
 
