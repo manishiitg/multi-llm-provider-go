@@ -105,9 +105,12 @@ jobs:
     
     - name: Build binaries
       run: |
+        pwd
+        ls -la cmd/
+        go mod download
         mkdir -p bin
-        go build -v -o bin/llm-test github.com/manishiitg/multi-llm-provider-go/cmd/llm-test
-        go build -v -o bin/llm-chat github.com/manishiitg/multi-llm-provider-go/cmd/llm-chat
+        go build -v -o bin/llm-test ./cmd/llm-test
+        go build -v -o bin/llm-chat ./cmd/llm-chat
 
   test-suite:
     name: Run Test Suite
@@ -132,8 +135,11 @@ jobs:
     
     - name: Build test binary
       run: |
+        pwd
+        ls -la cmd/
+        go mod download
         mkdir -p bin
-        go build -v -o bin/llm-test github.com/manishiitg/multi-llm-provider-go/cmd/llm-test
+        go build -v -o bin/llm-test ./cmd/llm-test
     
     - name: Run test suite
       run: ./bin/llm-test test-suite
