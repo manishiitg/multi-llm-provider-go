@@ -423,7 +423,7 @@ require (
 	fmt.Printf("\n✅ Turn 2 completed in %s\n", duration2)
 	fmt.Println("\n📊 Turn 2 Streaming Statistics:")
 	fmt.Printf("   Content chunks received: %d\n", len(contentChunks2))
-	fmt.Printf("   Streamed content length: %d chars\n", streamedContent2Str)
+	fmt.Printf("   Streamed content length: %d chars\n", len(streamedContent2Str))
 	fmt.Printf("   Final content length: %d chars\n", len(finalContent2))
 
 	// Display the LLM's response using tool results

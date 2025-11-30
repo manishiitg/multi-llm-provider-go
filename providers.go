@@ -1980,7 +1980,7 @@ func ValidateAPIKey(req APIKeyValidationRequest) APIKeyValidationResponse {
 		fmt.Printf("[API KEY VALIDATION ERROR] %s validation failed: %v\n", req.Provider, err)
 		return APIKeyValidationResponse{
 			Valid: false,
-			Error: fmt.Sprintf("Validation failed: %w", err),
+			Error: fmt.Sprintf("Validation failed: %v", err),
 		}
 	}
 
@@ -2543,7 +2543,7 @@ func validateBedrockCredentials(modelID string) (bool, string, error) {
 	// Load AWS SDK configuration
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion(region))
 	if err != nil {
-		fmt.Printf("[BEDROCK VALIDATION ERROR] Failed to load AWS config: %w\n", err)
+		fmt.Printf("[BEDROCK VALIDATION ERROR] Failed to load AWS config: %v\n", err)
 		return false, "Failed to load AWS configuration", err
 	}
 
@@ -2567,7 +2567,7 @@ func validateBedrockCredentials(modelID string) (bool, string, error) {
 		},
 	})
 	if err != nil {
-		fmt.Printf("[BEDROCK VALIDATION ERROR] Bedrock test generation failed: %w\n", err)
+		fmt.Printf("[BEDROCK VALIDATION ERROR] Bedrock test generation failed: %v\n", err)
 		// Check for specific error types
 		if strings.Contains(err.Error(), "AccessDenied") {
 			return false, "AWS credentials do not have permission to access Bedrock", nil
@@ -2578,7 +2578,7 @@ func validateBedrockCredentials(modelID string) (bool, string, error) {
 		if strings.Contains(err.Error(), "timeout") {
 			return false, "Bedrock service timeout - check network connectivity", nil
 		}
-		return false, fmt.Sprintf("Bedrock test generation failed: %w", err), nil
+		return false, fmt.Sprintf("Bedrock test generation failed: %v", err), nil
 	}
 
 	fmt.Printf("[BEDROCK VALIDATION SUCCESS] AWS Bedrock credentials are valid\n")
