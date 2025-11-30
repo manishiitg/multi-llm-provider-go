@@ -30,7 +30,6 @@ linters:
     # Style linters - disabled for now to focus on critical issues
     - revive            # Too many style issues - can enable later
     - funlen            # Function length - can relax later
-    - dupl              # Duplicate code - less critical
     - goconst           # Magic numbers - low priority
     - whitespace        # Formatting - low priority
     - unconvert         # Unnecessary conversions - low priority
