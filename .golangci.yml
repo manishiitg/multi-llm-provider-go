@@ -1,8 +1,8 @@
 # golangci-lint configuration for llm-providers
 # See https://golangci-lint.run/usage/configuration/ for full options
 
-# Version is required for golangci-lint v2.x
-version: 2
+# Version is required for golangci-lint v2.x (must be string)
+version: "2"
 
 run:
   # Timeout for analysis
@@ -12,21 +12,8 @@ run:
   build-tags:
     - integration
 
-# Output configuration
-output:
-  # Print linter name in issue line
-  print-issued-lines: true
-  # Print linter name in unused line
-  print-linter-name: true
-  # Sort results by: severity|filepath|linter
-  sort-results: false
-
 # Linters configuration
 linters:
-  # Use fast preset as base, then customize
-  # Fast preset includes: gofmt, goimports, govet, staticcheck, unused, gosimple, structcheck, varcheck, ineffassign, deadcode, typecheck
-  fast: true
-  
   # Disable specific linters that are too strict or not needed
   disable:
     - gochecknoinits    # Allow init functions
@@ -64,7 +51,8 @@ linters:
     - bodyclose         # HTTP response body closing - prevents resource leaks
     - noctx             # Context in HTTP requests - important for cancellation/timeouts
 
-linters-settings:
+# Linter settings (renamed from linters-settings in v2)
+linter:
   # govet settings - disable printf check to allow %w in fmt.Sprintf/log.Fatalf
   # Note: %w is only officially supported in fmt.Errorf, but %v works fine for logging
   govet:
@@ -92,7 +80,6 @@ linters-settings:
     severity: medium
     # Confidence level: low, medium, high
     confidence: medium
-    # Note: Lower-priority checks excluded via issues.exclude-rules below
   
   # revive settings
   revive:
@@ -143,21 +130,19 @@ issues:
   # Make output more machine-readable
   uniq-by-line: true
   
-  # Which dirs to skip: they won't be analyzed at all
-  exclude-dirs:
-    - bin
-    - vendor
-    - testdata
-  
-  # Which files to skip
-  exclude-files:
-    - ".*\\.pb\\.go$"
-    - ".*_generated\\.go$"
-  
-  # Exclude following linters from requiring explanations
-  exclude-rules:
+  # Exclude patterns (v2 format)
+  exclude:
+    # Exclude dirs
+    - path: bin
+    - path: vendor
+    - path: testdata
+    
+    # Exclude files
+    - path: ".*\\.pb\\.go$"
+    - path: ".*_generated\\.go$"
+    
     # Relaxed rules for test files
-    - path: _test\.go
+    - path: "_test\\.go"
       linters:
         - errcheck
         - dupl
@@ -166,19 +151,17 @@ issues:
         - gocognit
     
     # Allow unused parameters in test files
-    - path: _test\.go
+    - path: "_test\\.go"
       text: "parameter.*should have a comment"
       linters:
         - revive
     
     # Allow long lines in test files
-    - path: _test\.go
+    - path: "_test\\.go"
       linters:
         - lll
     
     # Exclude lower-priority gosec checks (focus on critical security issues)
-    # Only critical issues remain: G201/G202 (SQL injection), G204 (command injection), G304 (path traversal), G101 (hardcoded credentials)
-    # Note: G101 is kept enabled to catch real hardcoded credentials (false positives handled with nolint)
     - linters:
         - gosec
       text: "G104: Errors unhandled"
@@ -200,17 +183,3 @@ issues:
     - linters:
         - gosec
       text: "G302: Expect file permissions"
-
-# Severity configuration (optional - commented out for simpler config)
-# severity:
-#   default-severity: error
-#   case-sensitive: false
-#   rules:
-#     - linters:
-#         - gosec
-#       severity: error
-#     - linters:
-#         - misspell
-#         - dupl
-#       severity: warning
-
