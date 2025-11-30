@@ -19,7 +19,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.4'
+        go-version: '1.23'
         cache-dependency-path: go.sum
     
     - name: Run golangci-lint
@@ -75,7 +75,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.4'
+        go-version: '1.23'
         cache-dependency-path: go.sum
     
     - name: Run tests
@@ -92,7 +92,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.4'
+        go-version: '1.23'
         cache-dependency-path: go.sum
     
     - name: Verify checkout and list directories
@@ -119,7 +119,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.4'
+        go-version: '1.23'
         cache-dependency-path: go.sum
     
     - name: Verify checkout and list directories
