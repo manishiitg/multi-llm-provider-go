@@ -19,7 +19,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version: '1.24'
         cache-dependency-path: go.sum
     
     - name: Run golangci-lint
@@ -76,7 +76,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version: '1.24'
         cache-dependency-path: go.sum
     
     - name: Run tests
@@ -93,7 +93,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version: '1.24'
         cache-dependency-path: go.sum
     
     - name: Verify checkout and list directories
@@ -106,8 +106,8 @@ jobs:
     - name: Build binaries
       run: |
         mkdir -p bin
-        go build -o bin/llm-test ./cmd/llm-test
-        go build -o bin/llm-chat ./cmd/llm-chat
+        go build -v -o bin/llm-test ./cmd/llm-test
+        go build -v -o bin/llm-chat ./cmd/llm-chat
 
   test-suite:
     name: Run Test Suite
@@ -120,7 +120,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version: '1.24'
         cache-dependency-path: go.sum
     
     - name: Verify checkout and list directories
@@ -131,9 +131,10 @@ jobs:
         ls -la cmd/llm-test/ || echo "cmd/llm-test directory not found"
     
     - name: Build test binary
+      working-directory: .
       run: |
         mkdir -p bin
-        go build -o bin/llm-test ./cmd/llm-test
+        go build -v -o bin/llm-test ./cmd/llm-test
     
     - name: Run test suite
       run: ./bin/llm-test test-suite
