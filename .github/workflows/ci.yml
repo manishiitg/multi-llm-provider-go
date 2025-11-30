@@ -106,8 +106,8 @@ jobs:
     - name: Build binaries
       run: |
         mkdir -p bin
-        go build -v -o bin/llm-test ./cmd/llm-test
-        go build -v -o bin/llm-chat ./cmd/llm-chat
+        go build -v -o bin/llm-test github.com/manishiitg/multi-llm-provider-go/cmd/llm-test
+        go build -v -o bin/llm-chat github.com/manishiitg/multi-llm-provider-go/cmd/llm-chat
 
   test-suite:
     name: Run Test Suite
@@ -131,10 +131,9 @@ jobs:
         ls -la cmd/llm-test/ || echo "cmd/llm-test directory not found"
     
     - name: Build test binary
-      working-directory: .
       run: |
         mkdir -p bin
-        go build -v -o bin/llm-test ./cmd/llm-test
+        go build -v -o bin/llm-test github.com/manishiitg/multi-llm-provider-go/cmd/llm-test
     
     - name: Run test suite
       run: ./bin/llm-test test-suite
