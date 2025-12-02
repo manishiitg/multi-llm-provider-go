@@ -88,7 +88,7 @@ To record a test (capture real LLM responses):
 
 # Bedrock - Record an image understanding test
 ./bin/llm-test bedrock-image --model global.anthropic.claude-sonnet-4-5-20250929-v1:0 --record
-
+ 
 # OpenAI - Record a tool call events test
 ./bin/llm-test openai-tool-call-events --model gpt-4o-mini --record
 
