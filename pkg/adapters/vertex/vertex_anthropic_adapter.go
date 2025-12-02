@@ -88,18 +88,18 @@ func (v *VertexAnthropicAdapter) GenerateContent(ctx context.Context, messages [
 	)
 
 	if v.logger != nil {
-		v.logger.Infof("🔍 [VERTEX ANTHROPIC] Request endpoint: %s", endpoint)
-		v.logger.Infof("🔍 [VERTEX ANTHROPIC] Model: %s, Max tokens: %d, Temperature: %f",
+		v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Request endpoint: %s", endpoint)
+		v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Model: %s, Max tokens: %d, Temperature: %f",
 			v.modelID, requestPayload["max_tokens"], requestPayload["temperature"])
 		if tools, ok := requestPayload["tools"].([]map[string]interface{}); ok {
-			v.logger.Infof("🔍 [VERTEX ANTHROPIC] Tools being sent: %d", len(tools))
+			v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Tools being sent: %d", len(tools))
 			for i, tool := range tools {
 				if name, ok := tool["name"].(string); ok {
-					v.logger.Infof("🔍 [VERTEX ANTHROPIC] Tool %d: %s", i+1, name)
+					v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Tool %d: %s", i+1, name)
 				}
 			}
 		} else {
-			v.logger.Infof("🔍 [VERTEX ANTHROPIC] No tools in request payload")
+			v.logger.Debugf("🔍 [VERTEX ANTHROPIC] No tools in request payload")
 		}
 	}
 
@@ -199,15 +199,15 @@ func (v *VertexAnthropicAdapter) generateContent(ctx context.Context, endpoint, 
 						if input, ok := contentBlock["input"].(map[string]interface{}); ok && len(input) > 0 {
 							currentToolUseBlock["input"] = input
 							if v.logger != nil {
-								v.logger.Infof("🔍 [VERTEX ANTHROPIC] content_block_start has initial input: %v", input)
+								v.logger.Debugf("🔍 [VERTEX ANTHROPIC] content_block_start has initial input: %v", input)
 							}
 						} else {
 							if v.logger != nil {
-								v.logger.Infof("🔍 [VERTEX ANTHROPIC] content_block_start has no input, will accumulate from deltas. Content block keys: %v", getMapKeys(contentBlock))
+								v.logger.Debugf("🔍 [VERTEX ANTHROPIC] content_block_start has no input, will accumulate from deltas. Content block keys: %v", getMapKeys(contentBlock))
 							}
 						}
 						if v.logger != nil {
-							v.logger.Infof("🔍 [VERTEX ANTHROPIC] Started accumulating tool_use block: %v, initial input: %v",
+							v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Started accumulating tool_use block: %v, initial input: %v",
 								currentToolUseBlock["name"], currentToolUseBlock["input"])
 						}
 					}
@@ -239,7 +239,7 @@ func (v *VertexAnthropicAdapter) generateContent(ctx context.Context, endpoint, 
 						// partial_json is incremental JSON fragments that need to be accumulated
 						if partialJSON, ok := delta["partial_json"].(string); ok && partialJSON != "" {
 							if v.logger != nil {
-								v.logger.Infof("🔍 [VERTEX ANTHROPIC] Found partial_json fragment: %s", partialJSON)
+								v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Found partial_json fragment: %s", partialJSON)
 							}
 
 							// Accumulate the JSON fragment
@@ -251,13 +251,13 @@ func (v *VertexAnthropicAdapter) generateContent(ctx context.Context, endpoint, 
 							if err := json.Unmarshal([]byte(accumulatedJSON), &parsedInput); err != nil {
 								// JSON is still incomplete, wait for more fragments
 								if v.logger != nil {
-									v.logger.Infof("🔍 [VERTEX ANTHROPIC] Accumulated JSON is incomplete, waiting for more fragments. Current: %s", accumulatedJSON)
+									v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Accumulated JSON is incomplete, waiting for more fragments. Current: %s", accumulatedJSON)
 								}
 							} else {
 								// Successfully parsed complete JSON - update the input
 								currentToolUseBlock["input"] = parsedInput
 								if v.logger != nil {
-									v.logger.Infof("🔍 [VERTEX ANTHROPIC] Parsed complete JSON from accumulated fragments. Tool: %v, Input: %v",
+									v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Parsed complete JSON from accumulated fragments. Tool: %v, Input: %v",
 										currentToolUseBlock["name"], parsedInput)
 								}
 							}
@@ -266,12 +266,12 @@ func (v *VertexAnthropicAdapter) generateContent(ctx context.Context, endpoint, 
 						// Also check for tool_use.partial_input (legacy format)
 						if toolUseDelta, ok := delta["tool_use"].(map[string]interface{}); ok {
 							if v.logger != nil {
-								v.logger.Infof("🔍 [VERTEX ANTHROPIC] content_block_delta for tool_use - raw delta: %v", toolUseDelta)
+								v.logger.Debugf("🔍 [VERTEX ANTHROPIC] content_block_delta for tool_use - raw delta: %v", toolUseDelta)
 							}
 							// Handle partial_input - can be a map or a string (JSON)
 							if partialInputRaw, ok := toolUseDelta["partial_input"]; ok {
 								if v.logger != nil {
-									v.logger.Infof("🔍 [VERTEX ANTHROPIC] Found partial_input in delta: %v (type: %T)", partialInputRaw, partialInputRaw)
+									v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Found partial_input in delta: %v (type: %T)", partialInputRaw, partialInputRaw)
 								}
 								var partialInput map[string]interface{}
 
@@ -300,14 +300,14 @@ func (v *VertexAnthropicAdapter) generateContent(ctx context.Context, endpoint, 
 										existingInput[k] = v
 									}
 									if v.logger != nil {
-										v.logger.Infof("🔍 [VERTEX ANTHROPIC] Merged partial_input into existing input. Tool: %v, Merged input: %v",
+										v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Merged partial_input into existing input. Tool: %v, Merged input: %v",
 											currentToolUseBlock["name"], existingInput)
 									}
 								} else {
 									// Initialize input map if it doesn't exist
 									currentToolUseBlock["input"] = partialInput
 									if v.logger != nil {
-										v.logger.Infof("🔍 [VERTEX ANTHROPIC] Initialized input map with partial_input. Tool: %v, Input: %v",
+										v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Initialized input map with partial_input. Tool: %v, Input: %v",
 											currentToolUseBlock["name"], partialInput)
 									}
 								}
@@ -327,11 +327,11 @@ func (v *VertexAnthropicAdapter) generateContent(ctx context.Context, endpoint, 
 						if err := json.Unmarshal([]byte(accumulatedJSON), &parsedInput); err == nil {
 							currentToolUseBlock["input"] = parsedInput
 							if v.logger != nil {
-								v.logger.Infof("🔍 [VERTEX ANTHROPIC] Parsed final JSON from accumulated fragments at stop: %v", parsedInput)
+								v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Parsed final JSON from accumulated fragments at stop: %v", parsedInput)
 							}
 						} else {
 							if v.logger != nil {
-								v.logger.Infof("⚠️ [VERTEX ANTHROPIC] Failed to parse accumulated partial_json at stop: %s, error: %v", accumulatedJSON, err)
+								v.logger.Debugf("⚠️ [VERTEX ANTHROPIC] Failed to parse accumulated partial_json at stop: %s, error: %v", accumulatedJSON, err)
 							}
 						}
 						partialJSONBuffer.Reset()
@@ -341,17 +341,17 @@ func (v *VertexAnthropicAdapter) generateContent(ctx context.Context, endpoint, 
 					if contentBlock, ok := event["content_block"].(map[string]interface{}); ok {
 						if blockType, ok := contentBlock["type"].(string); ok && blockType == "tool_use" {
 							if v.logger != nil {
-								v.logger.Infof("🔍 [VERTEX ANTHROPIC] content_block_stop for tool_use - content_block keys: %v", getMapKeys(contentBlock))
+								v.logger.Debugf("🔍 [VERTEX ANTHROPIC] content_block_stop for tool_use - content_block keys: %v", getMapKeys(contentBlock))
 							}
 							if input, ok := contentBlock["input"].(map[string]interface{}); ok && len(input) > 0 {
 								// Use the complete input from stop event (overrides accumulated JSON)
 								currentToolUseBlock["input"] = input
 								if v.logger != nil {
-									v.logger.Infof("🔍 [VERTEX ANTHROPIC] Using complete input from content_block_stop: %v", input)
+									v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Using complete input from content_block_stop: %v", input)
 								}
 							} else {
 								if v.logger != nil {
-									v.logger.Infof("⚠️ [VERTEX ANTHROPIC] content_block_stop has no input or empty input. Accumulated input: %v", currentToolUseBlock["input"])
+									v.logger.Debugf("⚠️ [VERTEX ANTHROPIC] content_block_stop has no input or empty input. Accumulated input: %v", currentToolUseBlock["input"])
 								}
 							}
 						}
@@ -359,7 +359,7 @@ func (v *VertexAnthropicAdapter) generateContent(ctx context.Context, endpoint, 
 
 					// We have accumulated a tool_use block
 					if v.logger != nil {
-						v.logger.Infof("🔍 [VERTEX ANTHROPIC] Final tool_use block before parsing: %v", currentToolUseBlock)
+						v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Final tool_use block before parsing: %v", currentToolUseBlock)
 					}
 					toolCall := v.parseToolUse(currentToolUseBlock)
 					if toolCall != nil {
@@ -381,7 +381,7 @@ func (v *VertexAnthropicAdapter) generateContent(ctx context.Context, endpoint, 
 						}
 					} else {
 						if v.logger != nil {
-							v.logger.Infof("⚠️ [VERTEX ANTHROPIC] Failed to parse accumulated tool_use block: %v", currentToolUseBlock)
+							v.logger.Debugf("⚠️ [VERTEX ANTHROPIC] Failed to parse accumulated tool_use block: %v", currentToolUseBlock)
 						}
 					}
 					currentToolUseBlock = nil // Reset
@@ -534,7 +534,7 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 							// We need to insert an assistant message for it
 							anyToolCallsSkipped = true
 							if v.logger != nil {
-								v.logger.Infof("🔧 [VERTEX ANTHROPIC] Tool call %s was skipped in previous AI message - must insert assistant message", resultID)
+								v.logger.Debugf("🔧 [VERTEX ANTHROPIC] Tool call %s was skipped in previous AI message - must insert assistant message", resultID)
 							}
 							break
 						}
@@ -544,7 +544,7 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 					if anyToolCallsSkipped {
 						needsAssistantMessage = true
 						if v.logger != nil {
-							v.logger.Infof("🔧 [VERTEX ANTHROPIC] Tool calls were skipped - will insert assistant message")
+							v.logger.Debugf("🔧 [VERTEX ANTHROPIC] Tool calls were skipped - will insert assistant message")
 						}
 					} else {
 						// Check if ALL tool calls in previous message have corresponding tool results in current message
@@ -580,11 +580,11 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 						if allToolCallsHaveResults && allToolResultsHaveCalls && len(prevToolCallIDs) > 0 {
 							needsAssistantMessage = false
 							if v.logger != nil {
-								v.logger.Infof("🔧 [VERTEX ANTHROPIC] Previous AI message has %d tool calls, current message has %d tool results - all match, will be converted automatically", len(prevToolCallIDs), len(toolResultIDs))
+								v.logger.Debugf("🔧 [VERTEX ANTHROPIC] Previous AI message has %d tool calls, current message has %d tool results - all match, will be converted automatically", len(prevToolCallIDs), len(toolResultIDs))
 							}
 						} else {
 							if v.logger != nil {
-								v.logger.Infof("🔧 [VERTEX ANTHROPIC] Tool call/result mismatch - prev tool calls: %d, current tool results: %d, allToolCallsHaveResults: %v, allToolResultsHaveCalls: %v", len(prevToolCallIDs), len(toolResultIDs), allToolCallsHaveResults, allToolResultsHaveCalls)
+								v.logger.Debugf("🔧 [VERTEX ANTHROPIC] Tool call/result mismatch - prev tool calls: %d, current tool results: %d, allToolCallsHaveResults: %v, allToolResultsHaveCalls: %v", len(prevToolCallIDs), len(toolResultIDs), allToolCallsHaveResults, allToolResultsHaveCalls)
 							}
 						}
 					}
@@ -637,12 +637,12 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 								if id, ok := block["id"].(string); ok {
 									convertedToolCallIDs[id] = true
 									if v.logger != nil {
-										v.logger.Infof("🔧 [VERTEX ANTHROPIC] Tracked converted tool_use ID: %s", id)
+										v.logger.Debugf("🔧 [VERTEX ANTHROPIC] Tracked converted tool_use ID: %s", id)
 									}
 								}
 							}
 							if v.logger != nil {
-								v.logger.Infof("🔧 [VERTEX ANTHROPIC] Added assistant message with %d tool_use blocks (IDs: %v) before tool_result message", len(toolUseBlocks), toolResultIDs)
+								v.logger.Debugf("🔧 [VERTEX ANTHROPIC] Added assistant message with %d tool_use blocks (IDs: %v) before tool_result message", len(toolUseBlocks), toolResultIDs)
 							}
 							break
 						}
@@ -731,7 +731,7 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 							if aiToolCallIDs[resultID] {
 								toolCallsToSkip[resultID] = true
 								if v.logger != nil {
-									v.logger.Infof("🔧 [VERTEX ANTHROPIC] Will skip tool call %s in AI message - will be in inserted assistant message (separate tool result messages detected: %d messages for %d results)", resultID, toolResultMessages, len(futureToolResultIDs))
+									v.logger.Debugf("🔧 [VERTEX ANTHROPIC] Will skip tool call %s in AI message - will be in inserted assistant message (separate tool result messages detected: %d messages for %d results)", resultID, toolResultMessages, len(futureToolResultIDs))
 								}
 							}
 						}
@@ -742,7 +742,7 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 							if aiToolCallIDs[resultID] {
 								toolCallsToSkip[resultID] = true
 								if v.logger != nil {
-									v.logger.Infof("🔧 [VERTEX ANTHROPIC] Will skip tool call %s in AI message - will be in inserted assistant message", resultID)
+									v.logger.Debugf("🔧 [VERTEX ANTHROPIC] Will skip tool call %s in AI message - will be in inserted assistant message", resultID)
 								}
 							}
 						}
@@ -752,14 +752,14 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 		}
 
 		if v.logger != nil {
-			v.logger.Infof("🔍 [VERTEX ANTHROPIC] Converting message with %d parts, role: %s", len(msg.Parts), msg.Role)
+			v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Converting message with %d parts, role: %s", len(msg.Parts), msg.Role)
 		}
 
 		for i, part := range msg.Parts {
 			switch p := part.(type) {
 			case llmtypes.TextContent:
 				if v.logger != nil {
-					v.logger.Infof("🔍 [VERTEX ANTHROPIC] Part %d: TextContent, text length: %d, text preview: %.50s", i+1, len(p.Text), p.Text)
+					v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Part %d: TextContent, text length: %d, text preview: %.50s", i+1, len(p.Text), p.Text)
 				}
 				content = append(content, map[string]interface{}{
 					"type": "text",
@@ -767,7 +767,7 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 				})
 			case llmtypes.ImageContent:
 				if v.logger != nil {
-					v.logger.Infof("🔍 [VERTEX ANTHROPIC] Part %d: ImageContent, data length: %d, mediaType: %s", i+1, len(p.Data), p.MediaType)
+					v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Part %d: ImageContent, data length: %d, mediaType: %s", i+1, len(p.Data), p.MediaType)
 				}
 				// Handle image content
 				imageBlock := v.createImageBlock(p)
@@ -775,7 +775,7 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 					content = append(content, imageBlock)
 				} else {
 					if v.logger != nil {
-						v.logger.Infof("🔍 [VERTEX ANTHROPIC] Part %d: ImageContent created nil imageBlock", i+1)
+						v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Part %d: ImageContent created nil imageBlock", i+1)
 					}
 				}
 			case llmtypes.ToolCallResponse:
@@ -794,7 +794,7 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 					// This prevents duplicate tool_use IDs when we inserted an assistant message earlier
 					if convertedToolCallIDs[p.ID] {
 						if v.logger != nil {
-							v.logger.Infof("🔧 [VERTEX ANTHROPIC] Skipping tool call %s (tool: %s) - already converted in inserted assistant message", p.ID, p.FunctionCall.Name)
+							v.logger.Debugf("🔧 [VERTEX ANTHROPIC] Skipping tool call %s (tool: %s) - already converted in inserted assistant message", p.ID, p.FunctionCall.Name)
 						}
 						continue
 					}
@@ -803,7 +803,7 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 						// Track that this tool call was skipped
 						skippedToolCallIDs[p.ID] = true
 						if v.logger != nil {
-							v.logger.Infof("🔧 [VERTEX ANTHROPIC] Skipping tool call %s (tool: %s) - will be in inserted assistant message", p.ID, p.FunctionCall.Name)
+							v.logger.Debugf("🔧 [VERTEX ANTHROPIC] Skipping tool call %s (tool: %s) - will be in inserted assistant message", p.ID, p.FunctionCall.Name)
 						}
 						continue
 					}
@@ -831,23 +831,23 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 			default:
 				// Log any unhandled part types
 				if v.logger != nil {
-					v.logger.Infof("🔍 [VERTEX ANTHROPIC] Part %d: Unhandled part type: %T, value: %+v", i+1, part, part)
+					v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Part %d: Unhandled part type: %T, value: %+v", i+1, part, part)
 				}
 			}
 		}
 
 		if v.logger != nil {
-			v.logger.Infof("🔍 [VERTEX ANTHROPIC] Final content array has %d blocks for message with role: %s", len(content), msg.Role)
+			v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Final content array has %d blocks for message with role: %s", len(content), msg.Role)
 			for i, block := range content {
 				if blockType, ok := block["type"].(string); ok {
-					v.logger.Infof("🔍 [VERTEX ANTHROPIC] Content block %d: type=%s", i+1, blockType)
+					v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Content block %d: type=%s", i+1, blockType)
 					if blockType == "text" {
 						if text, ok := block["text"].(string); ok {
-							v.logger.Infof("🔍 [VERTEX ANTHROPIC]   Text content preview: %.100s", text)
+							v.logger.Debugf("🔍 [VERTEX ANTHROPIC]   Text content preview: %.100s", text)
 						}
 					}
 				} else if _, hasSource := block["source"]; hasSource {
-					v.logger.Infof("🔍 [VERTEX ANTHROPIC] Content block %d: image block (has source)", i+1)
+					v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Content block %d: image block (has source)", i+1)
 				}
 			}
 		}
@@ -925,9 +925,9 @@ func (v *VertexAnthropicAdapter) convertMessagesToAnthropic(messages []llmtypes.
 				}
 				msgJSON, err := json.MarshalIndent(logMsg, "", "  ")
 				if err == nil {
-					v.logger.Infof("🔍 [VERTEX ANTHROPIC] Message with image+text JSON (base64 data truncated):\n%s", string(msgJSON))
+					v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Message with image+text JSON (base64 data truncated):\n%s", string(msgJSON))
 				} else {
-					v.logger.Infof("🔍 [VERTEX ANTHROPIC] Failed to marshal message JSON: %v", err)
+					v.logger.Debugf("🔍 [VERTEX ANTHROPIC] Failed to marshal message JSON: %v", err)
 				}
 			}
 		}

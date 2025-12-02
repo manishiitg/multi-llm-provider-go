@@ -3242,6 +3242,194 @@ func RunImageTest(llm llmtypes.Model, modelID string, imagePath, imageURL string
 	log.Printf("\n🎯 All image understanding tests completed successfully!")
 }
 
+// RunImageTestWithContext runs standardized image understanding tests with a specific context
+// This version is used by the test suite for recording/replay support
+func RunImageTestWithContext(ctx context.Context, llm llmtypes.Model, modelID string) {
+	// Use default test image URL for test suite
+	defaultImageURL := "https://cdn.prod.website-files.com/657639ebfb91510f45654149/67cef0fb78a461a1580d3c5a_667f5f1018134e3c5a8549c2_AD_4nXfn52WaKNUy839wUllpITpaj7mvuOTR6AOzDk3SypLHLgO-_n8zgt7QJ7rxcLOfOJRWAShjk1dIZRmwuKYLCYFD4qgOq1SCiGFIYbnhDLjD1E0zTdb8cgnCBceLMy7lmCZ3qDUce-gCfJjofiZ9ftDF2m4.webp"
+	RunImageTestWithContextAndImage(ctx, llm, modelID, "", defaultImageURL)
+}
+
+// RunImageTestWithContextAndImage runs standardized image understanding tests with a specific context and image
+func RunImageTestWithContextAndImage(ctx context.Context, llm llmtypes.Model, modelID string, imagePath, imageURL string) {
+	// Prepare image content
+	var imageParts []llmtypes.ContentPart
+
+	if imagePath != "" {
+		// Load and encode image file
+		log.Printf("📁 Loading image from file: %s", imagePath)
+		imageData, err := os.ReadFile(imagePath)
+		if err != nil {
+			log.Printf("❌ Failed to read image file: %v", err)
+			return
+		}
+
+		// Detect MIME type from file extension
+		ext := strings.ToLower(filepath.Ext(imagePath))
+		mediaType := mime.TypeByExtension(ext)
+		if mediaType == "" {
+			// Fallback to common types
+			switch ext {
+			case ".jpg", ".jpeg":
+				mediaType = "image/jpeg"
+			case ".png":
+				mediaType = "image/png"
+			case ".gif":
+				mediaType = "image/gif"
+			case ".webp":
+				mediaType = "image/webp"
+			default:
+				log.Printf("❌ Unsupported image format: %s. Supported: JPEG, PNG, GIF, WebP", ext)
+				return
+			}
+		}
+
+		// Encode to base64
+		base64Data := base64.StdEncoding.EncodeToString(imageData)
+		log.Printf("✅ Image loaded: %d bytes, MIME type: %s", len(imageData), mediaType)
+
+		imageParts = append(imageParts, llmtypes.ImageContent{
+			SourceType: "base64",
+			MediaType:  mediaType,
+			Data:       base64Data,
+		})
+	} else if imageURL != "" {
+		// Use image URL
+		log.Printf("🌐 Using image URL: %s", imageURL)
+		imageParts = append(imageParts, llmtypes.ImageContent{
+			SourceType: "url",
+			MediaType:  "",
+			Data:       imageURL,
+		})
+	} else {
+		// Default test image URL
+		defaultImageURL := "https://cdn.prod.website-files.com/657639ebfb91510f45654149/67cef0fb78a461a1580d3c5a_667f5f1018134e3c5a8549c2_AD_4nXfn52WaKNUy839wUllpITpaj7mvuOTR6AOzDk3SypLHLgO-_n8zgt7QJ7rxcLOfOJRWAShjk1dIZRmwuKYLCYFD4qgOq1SCiGFIYbnhDLjD1E0zTdb8cgnCBceLMy7lmCZ3qDUce-gCfJjofiZ9ftDF2m4.webp"
+		log.Printf("🌐 Using default test image URL: %s", defaultImageURL)
+		imageParts = append(imageParts, llmtypes.ImageContent{
+			SourceType: "url",
+			MediaType:  "",
+			Data:       defaultImageURL,
+		})
+	}
+
+	// Test 1: Basic image description
+	log.Printf("\n📝 Test 1: Basic image description")
+	messages1 := []llmtypes.MessageContent{
+		{
+			Role: llmtypes.ChatMessageTypeHuman,
+			Parts: append([]llmtypes.ContentPart{
+				llmtypes.TextContent{Text: "What is in this image? Describe it in detail."},
+			}, imageParts...),
+		},
+	}
+
+	startTime1 := time.Now()
+	resp1, err := llm.GenerateContent(ctx, messages1, llmtypes.WithModel(modelID))
+	duration1 := time.Since(startTime1)
+
+	if err != nil {
+		log.Printf("❌ Test 1 failed: %v", err)
+		return
+	}
+
+	if len(resp1.Choices) == 0 {
+		log.Printf("❌ Test 1 failed - no response choices")
+		return
+	}
+
+	response1 := resp1.Choices[0].Content
+	previewLen := 200
+	if len(response1) < previewLen {
+		previewLen = len(response1)
+	}
+
+	log.Printf("✅ Test 1 passed in %s", duration1)
+	log.Printf("   Response length: %d characters", len(response1))
+	if previewLen > 0 {
+		log.Printf("   Response preview: %s", response1[:previewLen])
+	}
+
+	logTokenUsage(resp1.Choices[0].GenerationInfo)
+
+	// Test 2: Text extraction from image
+	log.Printf("\n📝 Test 2: Text extraction from image")
+	messages2 := []llmtypes.MessageContent{
+		{
+			Role: llmtypes.ChatMessageTypeHuman,
+			Parts: append([]llmtypes.ContentPart{
+				llmtypes.TextContent{Text: "What text is written in this image? Extract all visible text."},
+			}, imageParts...),
+		},
+	}
+
+	startTime2 := time.Now()
+	resp2, err := llm.GenerateContent(ctx, messages2, llmtypes.WithModel(modelID))
+	duration2 := time.Since(startTime2)
+
+	if err != nil {
+		log.Printf("❌ Test 2 failed: %v", err)
+		return
+	}
+
+	if len(resp2.Choices) == 0 {
+		log.Printf("❌ Test 2 failed - no response choices")
+		return
+	}
+
+	response2 := resp2.Choices[0].Content
+	if len(response2) < previewLen {
+		previewLen = len(response2)
+	}
+
+	log.Printf("✅ Test 2 passed in %s", duration2)
+	log.Printf("   Response length: %d characters", len(response2))
+	if previewLen > 0 {
+		log.Printf("   Response preview: %s", response2[:previewLen])
+	}
+
+	logTokenUsage(resp2.Choices[0].GenerationInfo)
+
+	// Test 3: Complex image analysis
+	log.Printf("\n📝 Test 3: Complex image analysis")
+	messages3 := []llmtypes.MessageContent{
+		{
+			Role: llmtypes.ChatMessageTypeHuman,
+			Parts: append([]llmtypes.ContentPart{
+				llmtypes.TextContent{Text: "Analyze this image and provide: 1) A detailed description of what you see, 2) Any text or numbers visible, 3) Colors and composition, 4) Any objects or people present."},
+			}, imageParts...),
+		},
+	}
+
+	startTime3 := time.Now()
+	resp3, err := llm.GenerateContent(ctx, messages3, llmtypes.WithModel(modelID))
+	duration3 := time.Since(startTime3)
+
+	if err != nil {
+		log.Printf("❌ Test 3 failed: %v", err)
+		return
+	}
+
+	if len(resp3.Choices) == 0 {
+		log.Printf("❌ Test 3 failed - no response choices")
+		return
+	}
+
+	response3 := resp3.Choices[0].Content
+	if len(response3) < previewLen {
+		previewLen = len(response3)
+	}
+
+	log.Printf("✅ Test 3 passed in %s", duration3)
+	log.Printf("   Response length: %d characters", len(response3))
+	if previewLen > 0 {
+		log.Printf("   Response preview: %s", response3[:previewLen])
+	}
+
+	logTokenUsage(resp3.Choices[0].GenerationInfo)
+
+	log.Printf("\n🎯 All image understanding tests completed successfully!")
+}
+
 // logTokenUsage logs token usage information
 func logTokenUsage(info *llmtypes.GenerationInfo) {
 	if info == nil {

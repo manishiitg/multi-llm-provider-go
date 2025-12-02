@@ -285,6 +285,12 @@ func initTestRegistry() {
 		TestLLMTokenUsage(ctx, llm, messages, "Hi", llmtypes.WithReasoningEffort("high"), llmtypes.WithVerbosity("high"))
 		return true, ""
 	})
+
+	// Register image understanding tests
+	registerTest("image", func(ctx context.Context, llm llmtypes.Model, modelID string, provider string, logger interfaces.Logger) (bool, string) {
+		RunImageTestWithContext(ctx, llm, modelID)
+		return true, ""
+	})
 }
 
 func runTestGroup(grouped map[string]map[string][]testCase, logger interfaces.Logger) []testResult {

@@ -584,10 +584,10 @@ func (g *GoogleGenAIAdapter) GenerateContent(ctx context.Context, messages []llm
 	// Convert tools if provided
 	if len(opts.Tools) > 0 {
 		if g.logger != nil {
-			g.logger.Infof("🔍 [VERTEX] Converting %d tools to Gemini format", len(opts.Tools))
+			g.logger.Debugf("🔍 [VERTEX] Converting %d tools to Gemini format", len(opts.Tools))
 			for i, tool := range opts.Tools {
 				if tool.Function != nil {
-					g.logger.Infof("🔍 [VERTEX] Tool %d: Name=%s, Description length=%d, HasParameters=%v",
+					g.logger.Debugf("🔍 [VERTEX] Tool %d: Name=%s, Description length=%d, HasParameters=%v",
 						i+1, tool.Function.Name, len(tool.Function.Description), tool.Function.Parameters != nil)
 				}
 			}
@@ -596,7 +596,7 @@ func (g *GoogleGenAIAdapter) GenerateContent(ctx context.Context, messages []llm
 		config.Tools = genaiTools
 		if g.logger != nil && genaiTools != nil && len(genaiTools) > 0 {
 			if len(genaiTools[0].FunctionDeclarations) > 0 {
-				g.logger.Infof("🔍 [VERTEX] Converted to %d function declarations in 1 Tool", len(genaiTools[0].FunctionDeclarations))
+				g.logger.Debugf("🔍 [VERTEX] Converted to %d function declarations in 1 Tool", len(genaiTools[0].FunctionDeclarations))
 			}
 		}
 
@@ -793,7 +793,7 @@ func (g *GoogleGenAIAdapter) generateContentStreaming(ctx context.Context, model
 							if thoughtSig != "" && sharedThoughtSignature == "" {
 								sharedThoughtSignature = thoughtSig
 								if g.logger != nil {
-									g.logger.Infof("✅ [VERTEX] Found thought signature in streaming part (function call: %s), will share with all parallel tool calls", part.FunctionCall.Name)
+									g.logger.Debugf("✅ [VERTEX] Found thought signature in streaming part (function call: %s), will share with all parallel tool calls", part.FunctionCall.Name)
 								}
 							}
 						} else if part.Text == "" {
@@ -802,7 +802,7 @@ func (g *GoogleGenAIAdapter) generateContentStreaming(ctx context.Context, model
 							if thoughtSig != "" && sharedThoughtSignature == "" {
 								sharedThoughtSignature = thoughtSig
 								if g.logger != nil {
-									g.logger.Infof("✅ [VERTEX] Found thought signature in streaming empty text part, will share with all parallel tool calls")
+									g.logger.Debugf("✅ [VERTEX] Found thought signature in streaming empty text part, will share with all parallel tool calls")
 								}
 							}
 						}
@@ -1021,7 +1021,7 @@ func convertTools(llmTools []llmtypes.Tool, logger interfaces.Logger) []*genai.T
 
 			// Validate schema before conversion
 			if logger != nil {
-				logger.Infof("🔍 [VERTEX] Validating schema for function %s", tool.Function.Name)
+				logger.Debugf("🔍 [VERTEX] Validating schema for function %s", tool.Function.Name)
 				validateSchemaForGemini(paramsMap, tool.Function.Name, logger)
 			}
 
@@ -1029,7 +1029,7 @@ func convertTools(llmTools []llmtypes.Tool, logger interfaces.Logger) []*genai.T
 			if schema != nil {
 				functionDef.Parameters = schema
 				if logger != nil {
-					logger.Infof("🔍 [VERTEX] Function %s: Schema converted successfully", tool.Function.Name)
+					logger.Debugf("🔍 [VERTEX] Function %s: Schema converted successfully", tool.Function.Name)
 				}
 			} else {
 				if logger != nil {
@@ -1038,13 +1038,13 @@ func convertTools(llmTools []llmtypes.Tool, logger interfaces.Logger) []*genai.T
 			}
 		} else {
 			if logger != nil {
-				logger.Infof("🔍 [VERTEX] Function %s: No parameters", tool.Function.Name)
+				logger.Debugf("🔍 [VERTEX] Function %s: No parameters", tool.Function.Name)
 			}
 		}
 
 		functionDeclarations = append(functionDeclarations, functionDef)
 		if logger != nil {
-			logger.Infof("🔍 [VERTEX] Added function declaration %d: %s", len(functionDeclarations), tool.Function.Name)
+			logger.Debugf("🔍 [VERTEX] Added function declaration %d: %s", len(functionDeclarations), tool.Function.Name)
 		}
 	}
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -727,13 +726,7 @@ func initializeOpenRouter(config Config) (llmtypes.Model, error) {
 	if logger == nil {
 		logger = &noopLoggerImpl{}
 	}
-	logger.Infof("🔧 Initializing OpenRouter LLM - model_id: %s, base_url: https://openrouter.ai/api/v1", modelID)
-
-	// 🆕 DETAILED OPENROUTER INITIALIZATION LOGGING
-	logger.Infof("🔧 [DEBUG] Creating OpenRouter LLM with OpenAI client...")
-	logger.Infof("🔧 [DEBUG] Model: %s", modelID)
-	logger.Infof("🔧 [DEBUG] Base URL: https://openrouter.ai/api/v1")
-	logger.Infof("🔧 [DEBUG] API Key present: %v", apiKey != "")
+	logger.Infof("Initializing OpenRouter LLM - model_id: %s", modelID)
 
 	// Create OpenAI SDK client with OpenRouter base URL
 	clientOptions := []option.RequestOption{
@@ -744,20 +737,15 @@ func initializeOpenRouter(config Config) (llmtypes.Model, error) {
 	// Add optional OpenRouter headers if provided
 	if httpReferer := os.Getenv("OPENROUTER_HTTP_REFERER"); httpReferer != "" {
 		clientOptions = append(clientOptions, option.WithHeader("HTTP-Referer", httpReferer))
-		logger.Infof("🔧 [DEBUG] Added HTTP-Referer header: %s", httpReferer)
 	}
 	if xTitle := os.Getenv("OPENROUTER_X_TITLE"); xTitle != "" {
 		clientOptions = append(clientOptions, option.WithHeader("X-Title", xTitle))
-		logger.Infof("🔧 [DEBUG] Added X-Title header: %s", xTitle)
 	}
 
 	client := openaisdk.NewClient(clientOptions...)
 
 	// Create OpenAI adapter with OpenRouter configuration
 	llm := openaiadapter.NewOpenAIAdapter(&client, modelID, logger)
-
-	// 🆕 POST-INITIALIZATION LOGGING
-	logger.Infof("🔧 [DEBUG] OpenRouter LLM creation completed - LLM: %v", llm != nil)
 
 	// Emit LLM initialization success event - use typed structure directly
 	successMetadata := LLMMetadata{
@@ -1124,180 +1112,39 @@ func (p *ProviderAwareLLM) GetModelID() string {
 func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmtypes.MessageContent, options ...llmtypes.CallOption) (*llmtypes.ContentResponse, error) {
 	// Note: LLM generation start event is now emitted at the agent level to avoid duplication
 
-	// 🆕 DETAILED DEBUG LOGGING - Track execution flow
+	// Track execution flow for debugging
 	startTime := time.Now()
-	p.logger.Infof("🚀 [DEBUG] GenerateContent START - Provider: %s, Model: %s, Messages: %d",
-		string(p.provider), p.modelID, len(messages))
-
-	// 🆕 CONTEXT DEBUGGING
-	if deadline, ok := ctx.Deadline(); ok {
-		timeUntilDeadline := time.Until(deadline)
-		p.logger.Infof("⏰ [DEBUG] Context deadline: %v, Time until deadline: %v", deadline, timeUntilDeadline)
-	} else {
-		p.logger.Infof("⏰ [DEBUG] Context has no deadline")
-	}
-
-	// 🆕 GOROUTINE DEBUGGING
-	p.logger.Infof("🧵 [DEBUG] Goroutine count before LLM call: %d", runtime.NumGoroutine())
+	llmCallStart := time.Now()
 
 	// Automatically add usage parameter for OpenRouter requests to get cache token information
 	if p.provider == ProviderOpenRouter {
-		p.logger.Infof("🔧 Adding OpenRouter usage parameter for cache token information")
 		options = append(options, WithOpenRouterUsage())
-		p.logger.Infof("🔧 OpenRouter options count after adding usage parameter: %d", len(options))
-
-		// 🆕 DETAILED OPENROUTER DEBUGGING
-		p.logger.Infof("🔧 [DEBUG] About to call OpenRouter API - Time: %v", time.Now())
-		p.logger.Infof("🔧 [DEBUG] OpenRouter request details - Messages: %d, Options: %d", len(messages), len(options))
-
-		// Log message content lengths for debugging
-		for i, msg := range messages {
-			contentLength := 0
-			for _, part := range msg.Parts {
-				if textPart, ok := part.(llmtypes.TextContent); ok {
-					contentLength += len(textPart.Text)
-				}
-			}
-			p.logger.Infof("🔧 [DEBUG] Message %d - Role: %s, Content length: %d", i+1, msg.Role, contentLength)
-		}
 	}
-
-	// 🆕 TIMING DEBUGGING - Track the actual LLM call
-	llmCallStart := time.Now()
-	p.logger.Infof("📞 [DEBUG] About to call p.Model.GenerateContent - Time: %v", llmCallStart)
-
-	// 🆕 DETAILED EXECUTION TRACKING
-	p.logger.Infof("🔍 [DEBUG] Context details - Err: %v, Done: %v", ctx.Err(), ctx.Done())
-	p.logger.Infof("🔍 [DEBUG] Options count: %d", len(options))
-	for i, opt := range options {
-		p.logger.Infof("🔍 [DEBUG] Option %d: %T", i+1, opt)
-	}
-	p.logger.Infof("🔍 [DEBUG] Messages count: %d", len(messages))
-	p.logger.Infof("🔍 [DEBUG] About to call underlying LLM.GenerateContent...")
 
 	// Call the underlying LLM
 	resp, err := p.Model.GenerateContent(ctx, messages, options...)
 
-	// 🆕 IMMEDIATE POST-CALL LOGGING
-	p.logger.Infof("🔍 [DEBUG] Underlying LLM.GenerateContent returned - Time: %v", time.Now())
-	p.logger.Infof("🔍 [DEBUG] Return values - Error: %v, Response: %w", err != nil, resp != nil)
-
-	// 🆕 TIMING DEBUGGING - Track LLM call completion
-	llmCallDuration := time.Since(llmCallStart)
-	totalDuration := time.Since(startTime)
-	p.logger.Infof("📞 [DEBUG] p.Model.GenerateContent completed - Duration: %v, Total duration: %v", llmCallDuration, totalDuration)
-
-	// 🆕 POST-CALL DEBUGGING
-	p.logger.Infof("🧵 [DEBUG] Goroutine count after LLM call: %d", runtime.NumGoroutine())
-	if err != nil {
-		p.logger.Infof("❌ [DEBUG] LLM call failed - Error: %v, Error type: %T", err, err)
-	} else {
-		p.logger.Infof("✅ [DEBUG] LLM call succeeded - Response: %v", resp != nil)
-	}
-
-	// 🆕 ENHANCED BEDROCK RESPONSE DEBUGGING
-	p.logger.Infof("🔍 Raw Bedrock response received - err: %v, resp: %w", err, resp != nil)
-
-	// 🆕 DETAILED BEDROCK RESPONSE ANALYSIS
-	if resp != nil {
-		p.logger.Infof("🔍 Response type: %T", resp)
-		p.logger.Infof("🔍 Response pointer: %p", resp)
-		p.logger.Infof("🔍 Response.Choices pointer: %p", resp.Choices)
-		if resp.Choices != nil {
-			p.logger.Infof("🔍 Response.Choices length: %d", len(resp.Choices))
-			for i, choice := range resp.Choices {
-				p.logger.Infof("🔍 Choice %d - Type: %T, Content: %v, Content length: %d",
-					i, choice, choice.Content != "", len(choice.Content))
-				if choice.Content != "" {
-					p.logger.Infof("🔍 Choice %d - First 100 chars: %s", i, truncateString(choice.Content, 100))
-				}
-
-				// 🆕 OPENROUTER CACHE DEBUGGING
-				if p.provider == ProviderOpenRouter && choice.GenerationInfo != nil {
-					info := choice.GenerationInfo
-					p.logger.Infof("🔍 OpenRouter GenerationInfo: CacheDiscount=%v, CachedContentTokens=%v",
-						info.CacheDiscount, info.CachedContentTokens)
-					// Check additional fields for cache-related info
-					if info.Additional != nil {
-						for key, value := range info.Additional {
-							if strings.Contains(strings.ToLower(key), "cache") {
-								p.logger.Infof("🔍 OpenRouter Cache Field - %s: %v (type: %T)", key, value, value)
-							}
-						}
-					}
-				} else if choice.GenerationInfo != nil {
-					info := choice.GenerationInfo
-					p.logger.Infof("🔍 GenerationInfo: InputTokens=%v, OutputTokens=%v, TotalTokens=%v",
-						info.InputTokens, info.OutputTokens, info.TotalTokens)
-				}
-			}
-		}
-	}
-
-	// 🆕 AWS BEDROCK SPECIFIC ERROR DETAILS
-	if err != nil && p.provider == ProviderBedrock {
-		p.logger.Infof("🔍 AWS Bedrock Error Details:")
-		p.logger.Infof("🔍 Error type: %T", err)
-		p.logger.Infof("🔍 Error message: %s", err.Error())
-
-		// Check for AWS-specific error types
-		if awsErr, ok := err.(interface{ Code() string }); ok {
-			p.logger.Infof("🔍 AWS Error Code: %s", awsErr.Code())
-		}
-		if awsErr, ok := err.(interface{ Message() string }); ok {
-			p.logger.Infof("🔍 AWS Error Message: %s", awsErr.Message())
-		}
-		if awsErr, ok := err.(interface{ RequestID() string }); ok {
-			p.logger.Infof("🔍 AWS Request ID: %s", awsErr.RequestID())
-		}
-
-		// Log the full error for debugging
-		p.logger.Infof("🔍 Full error details: %+v", err)
-	}
-
-	if resp != nil {
-		p.logger.Infof("🔍 Response structure - Choices: %v, Choices count: %d", resp.Choices != nil, len(resp.Choices))
-		if len(resp.Choices) > 0 {
-			choice := resp.Choices[0]
-			p.logger.Infof("🔍 First choice - Content: %v, Content length: %d, GenerationInfo: %v",
-				choice.Content != "", len(choice.Content), choice.GenerationInfo != nil)
-			if choice.GenerationInfo != nil {
-				info := choice.GenerationInfo
-				p.logger.Infof("🔍 GenerationInfo: InputTokens=%v, OutputTokens=%v, TotalTokens=%v",
-					info.InputTokens, info.OutputTokens, info.TotalTokens)
-			}
-		}
+	// Log timing for debugging
+	if p.logger != nil {
+		llmCallDuration := time.Since(llmCallStart)
+		totalDuration := time.Since(startTime)
+		p.logger.Debugf("LLM call completed - Duration: %v, Total duration: %v", llmCallDuration, totalDuration)
 	}
 
 	// Check if we have a valid response
 	if err != nil {
-		// 🆕 ENHANCED ERROR LOGGING FOR TURN 2 DEBUGGING
-		p.logger.Infof("❌ LLM generation failed - provider: %s, model: %s, error: %v", string(p.provider), p.modelID, err)
-		p.logger.Infof("❌ Error details - type: %T, message: %s", err, err.Error())
+		// Log error details
+		p.logger.Errorf("LLM generation failed - provider: %s, model: %s, error: %v", string(p.provider), p.modelID, err)
 
-		// 🆕 SERVER ERROR DETECTION AND LOGGING
+		// Server error detection and logging
 		if strings.Contains(err.Error(), "502") || strings.Contains(err.Error(), "Provider returned error") {
-			p.logger.Debugf("🔄 502 Bad Gateway error detected, will trigger fallback mechanism")
-			p.logger.Debugf("🔄 Server error details - provider: %s, model: %s, error: %s", string(p.provider), p.modelID, err.Error())
+			p.logger.Debugf("502 Bad Gateway error detected, will trigger fallback mechanism")
 		} else if strings.Contains(err.Error(), "503") {
-			p.logger.Debugf("🔄 503 Service Unavailable error detected, will trigger fallback mechanism")
+			p.logger.Debugf("503 Service Unavailable error detected, will trigger fallback mechanism")
 		} else if strings.Contains(err.Error(), "504") {
-			p.logger.Debugf("🔄 504 Gateway Timeout error detected, will trigger fallback mechanism")
+			p.logger.Debugf("504 Gateway Timeout error detected, will trigger fallback mechanism")
 		} else if strings.Contains(err.Error(), "500") {
-			p.logger.Debugf("🔄 500 Internal Server Error detected, will trigger fallback mechanism")
-		}
-
-		// Log the messages that were sent to help debug
-		p.logger.Infof("📤 Messages sent to LLM - count: %d", len(messages))
-		for i, msg := range messages {
-			// Calculate actual content length from message parts
-			contentLength := 0
-			for _, part := range msg.Parts {
-				if textPart, ok := part.(llmtypes.TextContent); ok {
-					contentLength += len(textPart.Text)
-				}
-			}
-			p.logger.Infof("📤 Message %d - Role: %s, Content length: %d", i+1, msg.Role, contentLength)
+			p.logger.Debugf("500 Internal Server Error detected, will trigger fallback mechanism")
 		}
 
 		// Emit LLM generation error event with rich debugging information
@@ -1319,12 +1166,11 @@ func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmty
 		return nil, err
 	}
 
-	// 🆕 ENHANCED RESPONSE VALIDATION LOGGING
-	p.logger.Infof("✅ LLM generation succeeded - provider: %s, model: %s", string(p.provider), p.modelID)
+	// Response validation
 
 	// Validate response structure
 	if resp == nil {
-		p.logger.Infof("❌ Response is nil - this will cause 'no results' error")
+		p.logger.Errorf("Response is nil - this will cause 'no results' error")
 
 		// Emit LLM generation error event for nil response
 		errorMetadata := LLMMetadata{
@@ -1339,7 +1185,7 @@ func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmty
 	}
 
 	if resp.Choices == nil {
-		p.logger.Infof("❌ Response.Choices is nil - this will cause 'no results' error")
+		p.logger.Errorf("Response.Choices is nil - this will cause 'no results' error")
 
 		// Enhanced logging for ALL providers when choices is nil
 		p.logger.Errorf("🔍 Nil Choices Debug Information for %s:", string(p.provider))
@@ -1387,7 +1233,7 @@ func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmty
 	}
 
 	if len(resp.Choices) == 0 {
-		p.logger.Infof("❌ Response.Choices is empty array - this will cause 'no results' error")
+		p.logger.Errorf("Response.Choices is empty array - this will cause 'no results' error")
 
 		// Enhanced logging for ALL providers when choices array is empty
 		p.logger.Errorf("🔍 Empty Choices Array Debug Information for %s:", string(p.provider))
@@ -1441,20 +1287,12 @@ func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmty
 	if firstChoice.Content == "" {
 		// Check if this is a valid tool call response
 		if len(firstChoice.ToolCalls) > 0 {
-			p.logger.Infof("✅ Valid tool call response detected - Content is empty but ToolCalls present")
-			p.logger.Infof("   Tool Calls: %d", len(firstChoice.ToolCalls))
-			for i, toolCall := range firstChoice.ToolCalls {
-				p.logger.Infof("   Tool Call %d: ID=%s, Type=%s", i+1, toolCall.ID, toolCall.Type)
-			}
-			// Note: Tool call events are emitted later in the function (line ~1594) to avoid duplication
 			// This is a valid response, continue processing
 		} else if firstChoice.FuncCall != nil { // Legacy function call handling
-			p.logger.Infof("✅ Valid function call response detected - Content is empty but FuncCall present")
-			p.logger.Infof("   Function Call: Name=%s", firstChoice.FuncCall.Name)
 			// This is a valid response, continue processing
 		} else {
 			// This is actually an empty content error
-			p.logger.Infof("❌ Choice.Content is empty - this will cause 'no results' error")
+			p.logger.Errorf("Choice.Content is empty - this will cause 'no results' error")
 
 			// Enhanced logging for ALL providers when choice content is empty
 			p.logger.Errorf("🔍 Empty Choice Content Debug Information for %s:", string(p.provider))
@@ -1557,19 +1395,11 @@ func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmty
 		}
 	}
 
-	// 🆕 ENHANCED SUCCESS LOGGING
-	p.logger.Infof("✅ LLM generation validation passed - provider: %s, model: %s", string(p.provider), p.modelID)
-	p.logger.Infof("✅ Response structure - Choices: %v, Choices count: %d", resp.Choices != nil, len(resp.Choices))
+	// Response validation passed
+
+	// Emit tool call events for all tool calls (even when content is present)
 	if len(resp.Choices) > 0 {
 		choice := resp.Choices[0]
-		p.logger.Infof("✅ First choice - Content: %v, Content length: %d, GenerationInfo: %v",
-			choice.Content != "", len(choice.Content), choice.GenerationInfo != nil)
-		if choice.GenerationInfo != nil {
-			p.logger.Infof("✅ GenerationInfo available: InputTokens=%v, OutputTokens=%v, TotalTokens=%v",
-				choice.GenerationInfo.InputTokens, choice.GenerationInfo.OutputTokens, choice.GenerationInfo.TotalTokens)
-		}
-
-		// Emit tool call events for all tool calls (even when content is present)
 		if len(choice.ToolCalls) > 0 {
 			for _, toolCall := range choice.ToolCalls {
 				toolName := ""
@@ -1606,7 +1436,7 @@ func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmty
 			usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 		}
 
-		p.logger.Infof("Token usage extracted: Input=%d, Output=%d, Total=%d", usage.InputTokens, usage.OutputTokens, usage.TotalTokens)
+		p.logger.Debugf("Token usage extracted: Input=%d, Output=%d, Total=%d", usage.InputTokens, usage.OutputTokens, usage.TotalTokens)
 
 		// Emit LLM generation success event with token usage
 		successMetadata := LLMMetadata{
@@ -2229,15 +2059,12 @@ func validateAnthropicAPIKey(apiKey string, modelID string) (bool, string, error
 
 // validateVertexCredentials validates Vertex AI OAuth credentials (gcloud/service account/ADC)
 func validateVertexCredentials(modelID string) (bool, string, error) {
-	fmt.Printf("[VERTEX VALIDATION] Starting OAuth credentials validation\n")
-
 	// Check for required environment variables
 	projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
 	if projectID == "" {
 		projectID = os.Getenv("VERTEX_PROJECT_ID")
 	}
 	if projectID == "" {
-		fmt.Printf("[VERTEX VALIDATION WARN] GOOGLE_CLOUD_PROJECT or VERTEX_PROJECT_ID not set\n")
 		return false, "GOOGLE_CLOUD_PROJECT or VERTEX_PROJECT_ID environment variable is required for OAuth authentication", nil
 	}
 
@@ -2247,20 +2074,15 @@ func validateVertexCredentials(modelID string) (bool, string, error) {
 	}
 	if location == "" {
 		location = "us-central1"
-		fmt.Printf("[VERTEX VALIDATION] Using default location: %s\n", location)
 	}
 	// Vertex AI doesn't support "global" location
 	if location == "global" {
 		location = "us-central1"
-		fmt.Printf("[VERTEX VALIDATION] Location 'global' is not valid for Vertex AI, using: %s\n", location)
 	}
-
-	fmt.Printf("[VERTEX VALIDATION] Testing OAuth with project: %s, location: %s\n", projectID, location)
 
 	// Use a default model if none provided
 	if modelID == "" {
 		modelID = "gemini-2.5-flash"
-		fmt.Printf("[VERTEX VALIDATION] Using default model: %s\n", modelID)
 	}
 
 	// Test OAuth by creating an LLM instance and making a real API call
@@ -2278,11 +2100,9 @@ func validateVertexCredentials(modelID string) (bool, string, error) {
 
 	if isAnthropicModel {
 		// Create Vertex Anthropic adapter for OAuth
-		fmt.Printf("[VERTEX VALIDATION] Creating Vertex Anthropic adapter for model: %s\n", modelID)
 		llm = vertexadapter.NewVertexAnthropicAdapter(projectID, location, modelID, noopLog)
 	} else {
 		// For Gemini models with OAuth, use Vertex AI backend (not Gemini Developer API)
-		fmt.Printf("[VERTEX VALIDATION] Creating Vertex AI Gemini adapter for model: %s with OAuth\n", modelID)
 
 		// Set environment variables for Vertex AI OAuth (genai library reads these)
 		originalProject := os.Getenv("GOOGLE_CLOUD_PROJECT")
@@ -2316,7 +2136,6 @@ func validateVertexCredentials(modelID string) (bool, string, error) {
 			Backend: genai.BackendVertexAI,
 		})
 		if err != nil {
-			fmt.Printf("[VERTEX VALIDATION ERROR] Failed to create Vertex AI client: %v\n", err)
 			return false, fmt.Sprintf("Failed to create Vertex AI client for Gemini model '%s': %v", modelID, err), nil
 		}
 
@@ -2325,7 +2144,6 @@ func validateVertexCredentials(modelID string) (bool, string, error) {
 	}
 
 	// Test the LLM with a simple generation call
-	fmt.Printf("[VERTEX VALIDATION] Making test generation call to Vertex AI\n")
 	_, err = llm.GenerateContent(ctx, []llmtypes.MessageContent{
 		{
 			Role:  llmtypes.ChatMessageTypeHuman,
@@ -2333,7 +2151,6 @@ func validateVertexCredentials(modelID string) (bool, string, error) {
 		},
 	})
 	if err != nil {
-		fmt.Printf("[VERTEX VALIDATION ERROR] Vertex AI test generation failed: %v\n", err)
 		// Check for specific error types
 		if strings.Contains(err.Error(), "authentication") || strings.Contains(err.Error(), "unauthorized") {
 			return false, "OAuth authentication failed. Make sure you have run 'gcloud auth application-default login' or set up service account credentials.", nil
@@ -2347,24 +2164,19 @@ func validateVertexCredentials(modelID string) (bool, string, error) {
 		return false, fmt.Sprintf("Vertex AI test generation failed: %v", err), nil
 	}
 
-	fmt.Printf("[VERTEX VALIDATION SUCCESS] Vertex AI OAuth credentials are valid\n")
 	return true, fmt.Sprintf("Vertex AI OAuth authentication successful (project: %s, location: %s)", projectID, location), nil
 }
 
 // validateVertexAPIKey validates a Vertex AI (Google Gemini) API key by making a real GenerateContent call
 func validateVertexAPIKey(apiKey string, modelID string) (bool, string, error) {
-	fmt.Printf("[VERTEX VALIDATION] Starting API key validation\n")
 	// Basic validation - Google API keys don't have a specific prefix
 	if apiKey == "" {
-		fmt.Printf("[VERTEX VALIDATION WARN] API key is empty\n")
 		return false, "API key is empty", nil
 	}
-	fmt.Printf("[VERTEX VALIDATION] API key format check passed\n")
 
 	// Use a default model if none provided
 	if modelID == "" {
 		modelID = "gemini-2.5-flash"
-		fmt.Printf("[VERTEX VALIDATION] Using default model: %s\n", modelID)
 	}
 
 	// Set API key in environment temporarily for initialization
@@ -2386,7 +2198,6 @@ func validateVertexAPIKey(apiKey string, modelID string) (bool, string, error) {
 	noopLog := &noopLoggerImpl{}
 
 	// Create Vertex LLM instance (for Gemini models with API key)
-	fmt.Printf("[VERTEX VALIDATION] Creating Vertex Gemini LLM instance\n")
 	config := Config{
 		Provider:    ProviderVertex,
 		ModelID:     modelID,
@@ -2400,12 +2211,10 @@ func validateVertexAPIKey(apiKey string, modelID string) (bool, string, error) {
 
 	llm, err := initializeVertexGemini(config, modelID, noopLog)
 	if err != nil {
-		fmt.Printf("[VERTEX VALIDATION ERROR] Failed to create LLM instance: %v\n", err)
 		return false, fmt.Sprintf("Failed to create Vertex LLM instance: %v", err), nil
 	}
 
 	// Test the LLM with a simple generation call
-	fmt.Printf("[VERTEX VALIDATION] Making test generation call to Vertex AI\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -2416,7 +2225,6 @@ func validateVertexAPIKey(apiKey string, modelID string) (bool, string, error) {
 		},
 	})
 	if err != nil {
-		fmt.Printf("[VERTEX VALIDATION ERROR] Vertex AI test generation failed: %v\n", err)
 		// Check for specific error types
 		if strings.Contains(err.Error(), "unauthorized") || strings.Contains(err.Error(), "401") {
 			return false, "Invalid Vertex AI API key", nil
@@ -2436,7 +2244,6 @@ func validateVertexAPIKey(apiKey string, modelID string) (bool, string, error) {
 		return false, fmt.Sprintf("Vertex AI test generation failed: %v", err), nil
 	}
 
-	fmt.Printf("[VERTEX VALIDATION SUCCESS] Vertex AI API key is valid\n")
 	return true, fmt.Sprintf("Vertex AI API key is valid for model %s", modelID), nil
 }
 

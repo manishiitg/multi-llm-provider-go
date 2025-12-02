@@ -2,10 +2,14 @@ package bedrock
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/interfaces"
 	"github.com/manishiitg/multi-llm-provider-go/internal/recorder"
@@ -922,42 +926,79 @@ func buildRequestInfo(messages []llmtypes.MessageContent, modelID string, opts *
 func convertMessagesToConverse(langMessages []llmtypes.MessageContent) []types.Message {
 	converseMessages := make([]types.Message, 0, len(langMessages))
 
-	for _, msg := range langMessages {
+	for i := 0; i < len(langMessages); i++ {
+		msg := langMessages[i]
 		var contentBlocks []types.ContentBlock
-		var systemPrompt string
 
-		// Extract content parts
+		// Skip system messages (will be handled separately)
+		if string(msg.Role) == string(llmtypes.ChatMessageTypeSystem) {
+			continue
+		}
+
+		// Handle "tool" role messages specially - combine consecutive tool messages into one user message
+		// Bedrock requires ALL ToolResult blocks for ToolUse blocks to be in a SINGLE user message
+		if string(msg.Role) == string(llmtypes.ChatMessageTypeTool) {
+			// Collect all consecutive "tool" role messages
+			var toolMessages []llmtypes.MessageContent
+			for j := i; j < len(langMessages); j++ {
+				if string(langMessages[j].Role) == string(llmtypes.ChatMessageTypeTool) {
+					toolMessages = append(toolMessages, langMessages[j])
+				} else {
+					break
+				}
+			}
+			// Skip the remaining tool messages (we'll process them all now)
+			i += len(toolMessages) - 1
+
+			// Combine all ToolCallResponse parts from all consecutive tool messages into one user message
+			for _, toolMsg := range toolMessages {
+				for _, part := range toolMsg.Parts {
+					switch p := part.(type) {
+					case llmtypes.ToolCallResponse:
+						// Tool response - convert to ToolResult content block
+						contentBlocks = append(contentBlocks, &types.ContentBlockMemberToolResult{
+							Value: types.ToolResultBlock{
+								ToolUseId: aws.String(p.ToolCallID),
+								Content: []types.ToolResultContentBlock{
+									&types.ToolResultContentBlockMemberText{
+										Value: p.Content,
+									},
+								},
+							},
+						})
+					case llmtypes.TextContent:
+						// Text content in tool message - add as text block
+						contentBlocks = append(contentBlocks, &types.ContentBlockMemberText{
+							Value: p.Text,
+						})
+					}
+				}
+			}
+
+			// Create a single user message with all ToolResult blocks
+			if len(contentBlocks) > 0 {
+				converseMessages = append(converseMessages, types.Message{
+					Role:    types.ConversationRoleUser,
+					Content: contentBlocks,
+				})
+			}
+			continue
+		}
+
+		// Process non-tool messages normally
 		for _, part := range msg.Parts {
 			switch p := part.(type) {
 			case llmtypes.TextContent:
-				if string(msg.Role) == string(llmtypes.ChatMessageTypeSystem) {
-					// Collect system messages separately
-					if systemPrompt != "" {
-						systemPrompt += "\n"
-					}
-					systemPrompt += p.Text
-				} else {
-					// Add text content block
-					contentBlocks = append(contentBlocks, &types.ContentBlockMemberText{
-						Value: p.Text,
-					})
-				}
-			case llmtypes.ImageContent:
-				// Handle image content (simplified - would need base64 conversion)
-				// For now, skip images in Converse API migration
-				// TODO: Implement image support
-			case llmtypes.ToolCallResponse:
-				// Tool response - convert to ToolResult content block
-				contentBlocks = append(contentBlocks, &types.ContentBlockMemberToolResult{
-					Value: types.ToolResultBlock{
-						ToolUseId: aws.String(p.ToolCallID),
-						Content: []types.ToolResultContentBlock{
-							&types.ToolResultContentBlockMemberText{
-								Value: p.Content,
-							},
-						},
-					},
+				// Add text content block
+				contentBlocks = append(contentBlocks, &types.ContentBlockMemberText{
+					Value: p.Text,
 				})
+			case llmtypes.ImageContent:
+				// Handle image content - convert to ImageBlock
+				imageBlock := createImageBlock(p)
+				if imageBlock != nil {
+					contentBlocks = append(contentBlocks, imageBlock)
+				}
 			case llmtypes.ToolCall:
 				// Tool call in assistant message - convert to ToolUse content block
 				var inputDoc document.Interface
@@ -986,11 +1027,6 @@ func convertMessagesToConverse(langMessages []llmtypes.MessageContent) []types.M
 			}
 		}
 
-		// Skip system messages (will be handled separately)
-		if string(msg.Role) == string(llmtypes.ChatMessageTypeSystem) {
-			continue
-		}
-
 		// Create message based on role
 		if len(contentBlocks) > 0 {
 			var role types.ConversationRole
@@ -1011,6 +1047,123 @@ func convertMessagesToConverse(langMessages []llmtypes.MessageContent) []types.M
 	}
 
 	return converseMessages
+}
+
+// createImageBlock creates a Bedrock ImageBlock from ImageContent
+// Bedrock Converse API requires raw bytes (not base64) for ImageSourceMemberBytes
+func createImageBlock(img llmtypes.ImageContent) *types.ContentBlockMemberImage {
+	var imageBytes []byte
+	var format types.ImageFormat
+
+	if img.SourceType == "base64" {
+		// Decode base64 to raw bytes
+		var err error
+		imageBytes, err = base64.StdEncoding.DecodeString(img.Data)
+		if err != nil {
+			// If decoding fails, return nil (invalid base64)
+			return nil
+		}
+		// Convert MIME type to ImageFormat
+		format = mimeTypeToImageFormat(img.MediaType)
+		if format == "" {
+			// Unsupported format
+			return nil
+		}
+	} else if img.SourceType == "url" {
+		// Fetch image from URL and convert to bytes
+		// Use background context with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		var err error
+		var mediaType string
+		imageBytes, mediaType, err = fetchImageFromURL(ctx, img.Data)
+		if err != nil {
+			// Log error but return nil (fetching failed)
+			return nil
+		}
+		format = mimeTypeToImageFormat(mediaType)
+		if format == "" {
+			// Unsupported format
+			return nil
+		}
+	} else {
+		// Invalid source type
+		return nil
+	}
+
+	// Create ImageBlock with raw bytes
+	imageBlock := &types.ContentBlockMemberImage{
+		Value: types.ImageBlock{
+			Format: format,
+			Source: &types.ImageSourceMemberBytes{
+				Value: imageBytes,
+			},
+		},
+	}
+
+	return imageBlock
+}
+
+// mimeTypeToImageFormat converts MIME type to Bedrock ImageFormat
+func mimeTypeToImageFormat(mimeType string) types.ImageFormat {
+	mimeType = strings.ToLower(mimeType)
+	switch {
+	case strings.Contains(mimeType, "png"):
+		return types.ImageFormatPng
+	case strings.Contains(mimeType, "jpeg") || strings.Contains(mimeType, "jpg"):
+		return types.ImageFormatJpeg
+	case strings.Contains(mimeType, "gif"):
+		return types.ImageFormatGif
+	case strings.Contains(mimeType, "webp"):
+		return types.ImageFormatWebp
+	default:
+		return ""
+	}
+}
+
+// fetchImageFromURL fetches an image from a URL and returns the bytes and MIME type
+func fetchImageFromURL(ctx context.Context, url string) ([]byte, string, error) {
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set user agent
+	req.Header.Set("User-Agent", "multi-llm-provider-go/1.0")
+
+	// Fetch image
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to fetch image: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// Read image bytes
+	imageBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read image: %w", err)
+	}
+
+	// Get MIME type from Content-Type header
+	mediaType := resp.Header.Get("Content-Type")
+	if mediaType == "" {
+		// Try to detect from content
+		mediaType = "image/jpeg" // Default fallback
+	}
+
+	return imageBytes, mediaType, nil
 }
 
 // convertToolsToConverse converts llmtypes tools to Converse API format
@@ -1243,59 +1396,192 @@ func (b *BedrockAdapter) logInputDetailsConverse(modelID string, messages []llmt
 		return
 	}
 
-	// Build input summary
-	inputSummary := map[string]interface{}{
-		"model_id":      modelID,
-		"message_count": len(input.Messages),
-		"json_mode":     opts.JSONMode,
-		"tools_count":   0,
-	}
-
-	// Add inference config details
-	if input.InferenceConfig != nil {
-		if input.InferenceConfig.Temperature != nil {
-			inputSummary["temperature"] = *input.InferenceConfig.Temperature
+	// Log basic request info
+	b.logger.Infof("🔍 [BEDROCK REQUEST] Model: %s, Message Count: %d, Tools: %d", modelID, len(input.Messages), func() int {
+		if input.ToolConfig != nil && input.ToolConfig.Tools != nil {
+			return len(input.ToolConfig.Tools)
 		}
-		if input.InferenceConfig.MaxTokens != nil {
-			inputSummary["max_tokens"] = *input.InferenceConfig.MaxTokens
-		}
-	}
+		return 0
+	}())
 
-	// Add tool config details
-	if input.ToolConfig != nil && input.ToolConfig.Tools != nil {
-		inputSummary["tools_count"] = len(input.ToolConfig.Tools)
-	}
-
-	// Add system message info
-	if input.System != nil {
-		inputSummary["system_blocks"] = len(input.System)
-	}
-
-	// Add message summaries (first 200 chars of each)
-	messageSummaries := make([]string, 0, len(messages))
+	// Log INPUT MESSAGES (llmtypes.MessageContent) - what we receive
+	b.logger.Infof("📥 [BEDROCK INPUT MESSAGES] Total: %d", len(messages))
 	for i, msg := range messages {
 		role := string(msg.Role)
-		var contentPreview string
-		if len(msg.Parts) > 0 {
-			if textPart, ok := msg.Parts[0].(llmtypes.TextContent); ok {
-				content := textPart.Text
-				if len(content) > 200 {
-					contentPreview = content[:200] + "..."
-				} else {
-					contentPreview = content
+		var partsInfo []string
+		var toolUseIDs []string
+		var toolResultIDs []string
+
+		for j, part := range msg.Parts {
+			switch p := part.(type) {
+			case llmtypes.TextContent:
+				preview := p.Text
+				if len(preview) > 100 {
+					preview = preview[:100] + "..."
 				}
-			} else {
-				contentPreview = fmt.Sprintf("[%T]", msg.Parts[0])
+				partsInfo = append(partsInfo, fmt.Sprintf("Part[%d]: TextContent (len=%d, preview=%q)", j, len(p.Text), preview))
+			case llmtypes.ToolCall:
+				toolUseIDs = append(toolUseIDs, p.ID)
+				partsInfo = append(partsInfo, fmt.Sprintf("Part[%d]: ToolCall (ID=%s, tool=%s, args_len=%d)", j, p.ID, p.FunctionCall.Name, len(p.FunctionCall.Arguments)))
+			case llmtypes.ToolCallResponse:
+				toolResultIDs = append(toolResultIDs, p.ToolCallID)
+				contentPreview := p.Content
+				if len(contentPreview) > 100 {
+					contentPreview = contentPreview[:100] + "..."
+				}
+				partsInfo = append(partsInfo, fmt.Sprintf("Part[%d]: ToolCallResponse (toolCallID=%s, content_len=%d, preview=%q)", j, p.ToolCallID, len(p.Content), contentPreview))
+			case llmtypes.ImageContent:
+				partsInfo = append(partsInfo, fmt.Sprintf("Part[%d]: ImageContent (type=%s)", j, p.MediaType))
+			default:
+				partsInfo = append(partsInfo, fmt.Sprintf("Part[%d]: %T", j, part))
 			}
 		}
-		messageSummaries = append(messageSummaries, fmt.Sprintf("%s: %s", role, contentPreview))
-		if i >= 4 { // Limit to first 5 messages
-			break
+
+		logMsg := fmt.Sprintf("  Message[%d]: Role=%s, Parts=%d", i, role, len(msg.Parts))
+		if len(toolUseIDs) > 0 {
+			logMsg += fmt.Sprintf(", ToolUseIDs=%v", toolUseIDs)
+		}
+		if len(toolResultIDs) > 0 {
+			logMsg += fmt.Sprintf(", ToolResultIDs=%v", toolResultIDs)
+		}
+		b.logger.Infof(logMsg)
+		for _, partInfo := range partsInfo {
+			b.logger.Infof("    %s", partInfo)
 		}
 	}
-	inputSummary["messages"] = messageSummaries
 
-	b.logger.Debugf("Bedrock Converse API INPUT - %+v", inputSummary)
+	// Log CONVERTED CONVERSE MESSAGES (types.Message) - what we send to Bedrock
+	b.logger.Infof("📤 [BEDROCK CONVERSE MESSAGES] Total: %d", len(input.Messages))
+	for i, msg := range input.Messages {
+		role := string(msg.Role)
+		var contentBlockInfo []string
+		var toolUseIDs []string
+		var toolResultIDs []string
+
+		for j, block := range msg.Content {
+			switch b := block.(type) {
+			case *types.ContentBlockMemberText:
+				preview := b.Value
+				if len(preview) > 100 {
+					preview = preview[:100] + "..."
+				}
+				contentBlockInfo = append(contentBlockInfo, fmt.Sprintf("Block[%d]: Text (len=%d, preview=%q)", j, len(b.Value), preview))
+			case *types.ContentBlockMemberToolUse:
+				toolUseID := aws.ToString(b.Value.ToolUseId)
+				toolUseIDs = append(toolUseIDs, toolUseID)
+				toolName := aws.ToString(b.Value.Name)
+				// Try to extract input as string for logging
+				inputStr := "{}"
+				if b.Value.Input != nil {
+					if inputBytes, err := b.Value.Input.MarshalSmithyDocument(); err == nil {
+						inputStr = string(inputBytes)
+						if len(inputStr) > 100 {
+							inputStr = inputStr[:100] + "..."
+						}
+					}
+				}
+				contentBlockInfo = append(contentBlockInfo, fmt.Sprintf("Block[%d]: ToolUse (ID=%s, tool=%s, input=%q)", j, toolUseID, toolName, inputStr))
+			case *types.ContentBlockMemberToolResult:
+				toolResultID := aws.ToString(b.Value.ToolUseId)
+				toolResultIDs = append(toolResultIDs, toolResultID)
+				var contentPreview string
+				if len(b.Value.Content) > 0 {
+					if textBlock, ok := b.Value.Content[0].(*types.ToolResultContentBlockMemberText); ok {
+						contentPreview = textBlock.Value
+						if len(contentPreview) > 100 {
+							contentPreview = contentPreview[:100] + "..."
+						}
+					} else {
+						contentPreview = fmt.Sprintf("[%T]", b.Value.Content[0])
+					}
+				}
+				contentBlockInfo = append(contentBlockInfo, fmt.Sprintf("Block[%d]: ToolResult (toolUseID=%s, content_len=%d, preview=%q)", j, toolResultID, func() int {
+					if len(b.Value.Content) > 0 {
+						if textBlock, ok := b.Value.Content[0].(*types.ToolResultContentBlockMemberText); ok {
+							return len(textBlock.Value)
+						}
+					}
+					return 0
+				}(), contentPreview))
+			case *types.ContentBlockMemberImage:
+				format := string(b.Value.Format)
+				var size int
+				if bytesSource, ok := b.Value.Source.(*types.ImageSourceMemberBytes); ok {
+					size = len(bytesSource.Value)
+				}
+				contentBlockInfo = append(contentBlockInfo, fmt.Sprintf("Block[%d]: Image (format=%s, size=%d bytes)", j, format, size))
+			default:
+				contentBlockInfo = append(contentBlockInfo, fmt.Sprintf("Block[%d]: %T", j, block))
+			}
+		}
+
+		logMsg := fmt.Sprintf("  ConverseMessage[%d]: Role=%s, ContentBlocks=%d", i, role, len(msg.Content))
+		if len(toolUseIDs) > 0 {
+			logMsg += fmt.Sprintf(", ToolUseIDs=%v", toolUseIDs)
+		}
+		if len(toolResultIDs) > 0 {
+			logMsg += fmt.Sprintf(", ToolResultIDs=%v", toolResultIDs)
+		}
+		b.logger.Infof(logMsg)
+		for _, blockInfo := range contentBlockInfo {
+			b.logger.Infof("    %s", blockInfo)
+		}
+	}
+
+	// Validate ToolUse/ToolResult pairing
+	b.logger.Infof("🔍 [BEDROCK VALIDATION] Checking ToolUse/ToolResult pairing...")
+	for i := 0; i < len(input.Messages); i++ {
+		msg := input.Messages[i]
+		if msg.Role == types.ConversationRoleAssistant {
+			// Collect ToolUse IDs from this assistant message
+			var toolUseIDs []string
+			for _, block := range msg.Content {
+				if toolUseBlock, ok := block.(*types.ContentBlockMemberToolUse); ok {
+					toolUseIDs = append(toolUseIDs, aws.ToString(toolUseBlock.Value.ToolUseId))
+				}
+			}
+
+			if len(toolUseIDs) > 0 {
+				// Check if next message (should be user) has corresponding ToolResult blocks
+				if i+1 < len(input.Messages) {
+					nextMsg := input.Messages[i+1]
+					if nextMsg.Role == types.ConversationRoleUser {
+						var foundToolResultIDs []string
+						for _, block := range nextMsg.Content {
+							if toolResultBlock, ok := block.(*types.ContentBlockMemberToolResult); ok {
+								foundToolResultIDs = append(foundToolResultIDs, aws.ToString(toolResultBlock.Value.ToolUseId))
+							}
+						}
+
+						// Check for missing ToolResult blocks
+						var missingIDs []string
+						for _, toolUseID := range toolUseIDs {
+							found := false
+							for _, foundID := range foundToolResultIDs {
+								if toolUseID == foundID {
+									found = true
+									break
+								}
+							}
+							if !found {
+								missingIDs = append(missingIDs, toolUseID)
+							}
+						}
+
+						if len(missingIDs) > 0 {
+							b.logger.Errorf("❌ [BEDROCK VALIDATION ERROR] Message[%d] has ToolUse IDs %v, but Message[%d] is missing ToolResult blocks for: %v", i, toolUseIDs, i+1, missingIDs)
+						} else {
+							b.logger.Infof("✅ [BEDROCK VALIDATION] Message[%d] ToolUse IDs %v have matching ToolResult blocks in Message[%d]", i, toolUseIDs, i+1)
+						}
+					} else {
+						b.logger.Errorf("❌ [BEDROCK VALIDATION ERROR] Message[%d] has ToolUse IDs %v, but next message (index %d) is not a user message (role=%s)", i, toolUseIDs, i+1, nextMsg.Role)
+					}
+				} else {
+					b.logger.Errorf("❌ [BEDROCK VALIDATION ERROR] Message[%d] has ToolUse IDs %v, but there is no next message to provide ToolResult blocks", i, toolUseIDs)
+				}
+			}
+		}
+	}
 }
 
 // logErrorDetailsConverse logs error details for Converse API
@@ -1527,54 +1813,20 @@ func (b *BedrockAdapter) logErrorDetailsConverse(modelID string, messages []llmt
 	// Log comprehensive error information
 	b.logger.Errorf("Bedrock Converse API ERROR - %+v", errorInfo)
 
-	// Log additional error details for debugging
-	b.logger.Infof("❌ Bedrock LLM generation failed - model: %s, error: %v", modelID, err)
-	b.logger.Infof("❌ Error details - type: %T, message: %s", err, err.Error())
+	// Log error
+	b.logger.Errorf("Bedrock LLM generation failed - model: %s, error: %v", modelID, err)
 
-	// Log AWS-specific error details if available
+	// Log AWS-specific error details if available (for debugging)
 	if awsErrCode != "" {
-		b.logger.Infof("❌ AWS Error Code: %s", awsErrCode)
+		b.logger.Debugf("AWS Error Code: %s", awsErrCode)
 	}
 	if awsErrMessage != "" {
-		b.logger.Infof("❌ AWS Error Message: %s", awsErrMessage)
+		b.logger.Debugf("AWS Error Message: %s", awsErrMessage)
 	}
 	if awsRequestID != "" {
-		b.logger.Infof("❌ AWS Request ID: %s", awsRequestID)
+		b.logger.Debugf("AWS Request ID: %s", awsRequestID)
 	}
 	if awsHTTPStatusCode > 0 {
-		b.logger.Infof("❌ HTTP Status Code: %d", awsHTTPStatusCode)
-	}
-
-	// Log request parameters
-	b.logger.Infof("📝 Request Parameters:")
-	if input.InferenceConfig != nil {
-		if input.InferenceConfig.Temperature != nil {
-			b.logger.Infof("   Temperature: %v", *input.InferenceConfig.Temperature)
-		}
-		if input.InferenceConfig.MaxTokens != nil {
-			b.logger.Infof("   Max Tokens: %d", *input.InferenceConfig.MaxTokens)
-		}
-	}
-	if input.ToolConfig != nil && input.ToolConfig.Tools != nil {
-		b.logger.Infof("   Tools Count: %d", len(input.ToolConfig.Tools))
-	}
-	if input.System != nil {
-		b.logger.Infof("   System Blocks: %d", len(input.System))
-	}
-
-	// Log messages sent for debugging
-	b.logger.Infof("📤 Messages sent to Bedrock LLM - count: %d", len(messages))
-	for i, msg := range messages {
-		// Calculate actual content length from message parts
-		contentLength := 0
-		for _, part := range msg.Parts {
-			if textPart, ok := part.(llmtypes.TextContent); ok {
-				contentLength += len(textPart.Text)
-			}
-		}
-		b.logger.Infof("📤 Message %d - Role: %s, Content length: %d", i+1, msg.Role, contentLength)
-		if i >= 4 { // Limit to first 5 messages
-			break
-		}
+		b.logger.Debugf("HTTP Status Code: %d", awsHTTPStatusCode)
 	}
 }

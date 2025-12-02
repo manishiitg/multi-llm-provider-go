@@ -86,6 +86,9 @@ To record a test (capture real LLM responses):
 # Bedrock - Record a tool call events test
 ./bin/llm-test bedrock-tool-call-events --model global.anthropic.claude-sonnet-4-5-20250929-v1:0 --record
 
+# Bedrock - Record an image understanding test
+./bin/llm-test bedrock-image --model global.anthropic.claude-sonnet-4-5-20250929-v1:0 --record
+
 # OpenAI - Record a tool call events test
 ./bin/llm-test openai-tool-call-events --model gpt-4o-mini --record
 
@@ -138,6 +141,9 @@ To replay a recorded test (use recorded responses):
 # Bedrock - Replay a tool call events test
 ./bin/llm-test bedrock-tool-call-events --model global.anthropic.claude-sonnet-4-5-20250929-v1:0 --replay
 
+# Bedrock - Replay an image understanding test
+./bin/llm-test bedrock-image --model global.anthropic.claude-sonnet-4-5-20250929-v1:0 --replay
+
 # OpenAI - Replay a tool call events test
 ./bin/llm-test openai-tool-call-events --model gpt-4o-mini --replay
 
@@ -187,6 +193,7 @@ To run all recorded tests automatically:
 - `token_usage` - Basic token usage tests
 - `token_usage_cache` - Token usage with cache tests
 - `simple_reasoning` - Reasoning token tests (gpt-5.1)
+- `image` - Image understanding tests (vision capabilities)
 
 All test types are registered in the `initTestRegistry()` function and automatically discovered by the test suite.
 
@@ -310,6 +317,32 @@ Tests tool call event emission for all providers:
 - Event count matches tool call count
 - Event structure matches expected format (ID, name, arguments)
 - Events are properly captured by TestEventEmitter
+
+### Image Understanding Tests
+
+Tests image understanding (vision) capabilities:
+
+```bash
+# Bedrock
+./bin/llm-test bedrock-image --model global.anthropic.claude-sonnet-4-5-20250929-v1:0 --record
+
+# Vertex (Gemini)
+./bin/llm-test vertex-image --model gemini-2.5-flash --record
+
+# OpenAI
+./bin/llm-test openai-image --model gpt-4o-mini --record
+
+# OpenRouter
+./bin/llm-test openrouter-image --model moonshotai/kimi-k2 --record
+```
+
+**Validates:**
+- Image content is processed correctly
+- Basic image description is generated
+- Text extraction from images works
+- Complex image analysis is performed
+- Supports both base64-encoded images and image URLs
+- Supports PNG, JPEG, GIF, and WebP formats
 
 ### Token Usage Tests
 
