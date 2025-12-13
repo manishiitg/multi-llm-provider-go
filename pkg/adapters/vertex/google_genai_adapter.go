@@ -44,6 +44,11 @@ func NewGoogleGenAIAdapter(client *genai.Client, modelID string, logger interfac
 	}
 }
 
+// GetModelID implements the llmtypes.Model interface
+func (g *GoogleGenAIAdapter) GetModelID() string {
+	return g.modelID
+}
+
 // GenerateContent implements the llmtypes.Model interface
 func (g *GoogleGenAIAdapter) GenerateContent(ctx context.Context, messages []llmtypes.MessageContent, options ...llmtypes.CallOption) (*llmtypes.ContentResponse, error) {
 	// Parse call options

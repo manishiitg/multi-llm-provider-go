@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -1121,184 +1120,97 @@ func (p *ProviderAwareLLM) GetModelID() string {
 }
 
 // GenerateContent wraps the underlying LLM's GenerateContent method to automatically capture token usage
+// extractTextFromParts extracts text content from message parts
+func extractTextFromParts(parts []llmtypes.ContentPart) string {
+	var textParts []string
+	for _, part := range parts {
+		if textPart, ok := part.(llmtypes.TextContent); ok {
+			textParts = append(textParts, textPart.Text)
+		}
+	}
+	return strings.Join(textParts, " ")
+}
+
 func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmtypes.MessageContent, options ...llmtypes.CallOption) (*llmtypes.ContentResponse, error) {
 	// Note: LLM generation start event is now emitted at the agent level to avoid duplication
 
-	// 🆕 DETAILED DEBUG LOGGING - Track execution flow
-	startTime := time.Now()
-	p.logger.Infof("🚀 [DEBUG] GenerateContent START - Provider: %s, Model: %s, Messages: %d",
-		string(p.provider), p.modelID, len(messages))
-
-	// 🆕 CONTEXT DEBUGGING
-	if deadline, ok := ctx.Deadline(); ok {
-		timeUntilDeadline := time.Until(deadline)
-		p.logger.Infof("⏰ [DEBUG] Context deadline: %v, Time until deadline: %v", deadline, timeUntilDeadline)
-	} else {
-		p.logger.Infof("⏰ [DEBUG] Context has no deadline")
-	}
-
-	// 🆕 GOROUTINE DEBUGGING
-	p.logger.Infof("🧵 [DEBUG] Goroutine count before LLM call: %d", runtime.NumGoroutine())
-
 	// Automatically add usage parameter for OpenRouter requests to get cache token information
 	if p.provider == ProviderOpenRouter {
-		p.logger.Infof("🔧 Adding OpenRouter usage parameter for cache token information")
 		options = append(options, WithOpenRouterUsage())
-		p.logger.Infof("🔧 OpenRouter options count after adding usage parameter: %d", len(options))
+	}
 
-		// 🆕 DETAILED OPENROUTER DEBUGGING
-		p.logger.Infof("🔧 [DEBUG] About to call OpenRouter API - Time: %v", time.Now())
-		p.logger.Infof("🔧 [DEBUG] OpenRouter request details - Messages: %d, Options: %d", len(messages), len(options))
+	// 🆕 USEFUL LOGGING - System prompts, messages, and tools
+	// Parse call options to extract tools
+	opts := &llmtypes.CallOptions{}
+	for _, opt := range options {
+		opt(opts)
+	}
 
-		// Log message content lengths for debugging
-		for i, msg := range messages {
-			contentLength := 0
-			for _, part := range msg.Parts {
-				if textPart, ok := part.(llmtypes.TextContent); ok {
-					contentLength += len(textPart.Text)
-				}
+	// Extract and log system prompts
+	var systemPrompts []string
+	for _, msg := range messages {
+		if msg.Role == llmtypes.ChatMessageTypeSystem {
+			text := extractTextFromParts(msg.Parts)
+			if text != "" {
+				systemPrompts = append(systemPrompts, text)
 			}
-			p.logger.Infof("🔧 [DEBUG] Message %d - Role: %s, Content length: %d", i+1, msg.Role, contentLength)
 		}
 	}
-
-	// 🆕 TIMING DEBUGGING - Track the actual LLM call
-	llmCallStart := time.Now()
-	p.logger.Infof("📞 [DEBUG] About to call p.Model.GenerateContent - Time: %v", llmCallStart)
-
-	// 🆕 DETAILED EXECUTION TRACKING
-	p.logger.Infof("🔍 [DEBUG] Context details - Err: %v, Done: %v", ctx.Err(), ctx.Done())
-	p.logger.Infof("🔍 [DEBUG] Options count: %d", len(options))
-	for i, opt := range options {
-		p.logger.Infof("🔍 [DEBUG] Option %d: %T", i+1, opt)
+	if len(systemPrompts) > 0 {
+		p.logger.Infof("📋 SYSTEM PROMPTS (%d):", len(systemPrompts))
+		for i, prompt := range systemPrompts {
+			p.logger.Infof("   [%d] %s", i+1, prompt)
+		}
+	} else {
+		p.logger.Infof("📋 SYSTEM PROMPTS: None")
 	}
-	p.logger.Infof("🔍 [DEBUG] Messages count: %d", len(messages))
-	p.logger.Infof("🔍 [DEBUG] About to call underlying LLM.GenerateContent...")
+
+	// Log all messages
+	p.logger.Infof("💬 MESSAGES (%d):", len(messages))
+	for i, msg := range messages {
+		text := extractTextFromParts(msg.Parts)
+		// Truncate very long messages for readability
+		displayText := text
+		if len(displayText) > 500 {
+			displayText = displayText[:500] + "... [truncated]"
+		}
+		p.logger.Infof("   [%d] Role: %s, Content: %s", i+1, msg.Role, displayText)
+	}
+
+	// Log tools if provided
+	if len(opts.Tools) > 0 {
+		p.logger.Infof("🔧 TOOLS (%d):", len(opts.Tools))
+		for i, tool := range opts.Tools {
+			if tool.Function != nil {
+				toolJSON, err := json.MarshalIndent(tool, "      ", "  ")
+				if err != nil {
+					p.logger.Infof("   [%d] %s (error marshaling: %v)", i+1, tool.Function.Name, err)
+				} else {
+					p.logger.Infof("   [%d] %s:\n%s", i+1, tool.Function.Name, string(toolJSON))
+				}
+			} else {
+				p.logger.Infof("   [%d] Tool with nil Function", i+1)
+			}
+		}
+	} else {
+		p.logger.Infof("🔧 TOOLS: None")
+	}
+
+	// Log request timing
+	requestStartTime := time.Now()
+	p.logger.Infof("⏱️  LLM REQUEST START - Time: %s", requestStartTime.Format(time.RFC3339))
 
 	// Call the underlying LLM
 	resp, err := p.Model.GenerateContent(ctx, messages, options...)
 
-	// 🆕 IMMEDIATE POST-CALL LOGGING
-	p.logger.Infof("🔍 [DEBUG] Underlying LLM.GenerateContent returned - Time: %v", time.Now())
-	p.logger.Infof("🔍 [DEBUG] Return values - Error: %v, Response: %w", err != nil, resp != nil)
-
-	// 🆕 TIMING DEBUGGING - Track LLM call completion
-	llmCallDuration := time.Since(llmCallStart)
-	totalDuration := time.Since(startTime)
-	p.logger.Infof("📞 [DEBUG] p.Model.GenerateContent completed - Duration: %v, Total duration: %v", llmCallDuration, totalDuration)
-
-	// 🆕 POST-CALL DEBUGGING
-	p.logger.Infof("🧵 [DEBUG] Goroutine count after LLM call: %d", runtime.NumGoroutine())
-	if err != nil {
-		p.logger.Infof("❌ [DEBUG] LLM call failed - Error: %v, Error type: %T", err, err)
-	} else {
-		p.logger.Infof("✅ [DEBUG] LLM call succeeded - Response: %v", resp != nil)
-	}
-
-	// 🆕 ENHANCED BEDROCK RESPONSE DEBUGGING
-	p.logger.Infof("🔍 Raw Bedrock response received - err: %v, resp: %w", err, resp != nil)
-
-	// 🆕 DETAILED BEDROCK RESPONSE ANALYSIS
-	if resp != nil {
-		p.logger.Infof("🔍 Response type: %T", resp)
-		p.logger.Infof("🔍 Response pointer: %p", resp)
-		p.logger.Infof("🔍 Response.Choices pointer: %p", resp.Choices)
-		if resp.Choices != nil {
-			p.logger.Infof("🔍 Response.Choices length: %d", len(resp.Choices))
-			for i, choice := range resp.Choices {
-				p.logger.Infof("🔍 Choice %d - Type: %T, Content: %v, Content length: %d",
-					i, choice, choice.Content != "", len(choice.Content))
-				if choice.Content != "" {
-					p.logger.Infof("🔍 Choice %d - First 100 chars: %s", i, truncateString(choice.Content, 100))
-				}
-
-				// 🆕 OPENROUTER CACHE DEBUGGING
-				if p.provider == ProviderOpenRouter && choice.GenerationInfo != nil {
-					info := choice.GenerationInfo
-					p.logger.Infof("🔍 OpenRouter GenerationInfo: CacheDiscount=%v, CachedContentTokens=%v",
-						info.CacheDiscount, info.CachedContentTokens)
-					// Check additional fields for cache-related info
-					if info.Additional != nil {
-						for key, value := range info.Additional {
-							if strings.Contains(strings.ToLower(key), "cache") {
-								p.logger.Infof("🔍 OpenRouter Cache Field - %s: %v (type: %T)", key, value, value)
-							}
-						}
-					}
-				} else if choice.GenerationInfo != nil {
-					info := choice.GenerationInfo
-					p.logger.Infof("🔍 GenerationInfo: InputTokens=%v, OutputTokens=%v, TotalTokens=%v",
-						info.InputTokens, info.OutputTokens, info.TotalTokens)
-				}
-			}
-		}
-	}
-
-	// 🆕 AWS BEDROCK SPECIFIC ERROR DETAILS
-	if err != nil && p.provider == ProviderBedrock {
-		p.logger.Infof("🔍 AWS Bedrock Error Details:")
-		p.logger.Infof("🔍 Error type: %T", err)
-		p.logger.Infof("🔍 Error message: %s", err.Error())
-
-		// Check for AWS-specific error types
-		if awsErr, ok := err.(interface{ Code() string }); ok {
-			p.logger.Infof("🔍 AWS Error Code: %s", awsErr.Code())
-		}
-		if awsErr, ok := err.(interface{ Message() string }); ok {
-			p.logger.Infof("🔍 AWS Error Message: %s", awsErr.Message())
-		}
-		if awsErr, ok := err.(interface{ RequestID() string }); ok {
-			p.logger.Infof("🔍 AWS Request ID: %s", awsErr.RequestID())
-		}
-
-		// Log the full error for debugging
-		p.logger.Infof("🔍 Full error details: %+v", err)
-	}
-
-	if resp != nil {
-		p.logger.Infof("🔍 Response structure - Choices: %v, Choices count: %d", resp.Choices != nil, len(resp.Choices))
-		if len(resp.Choices) > 0 {
-			choice := resp.Choices[0]
-			p.logger.Infof("🔍 First choice - Content: %v, Content length: %d, GenerationInfo: %v",
-				choice.Content != "", len(choice.Content), choice.GenerationInfo != nil)
-			if choice.GenerationInfo != nil {
-				info := choice.GenerationInfo
-				p.logger.Infof("🔍 GenerationInfo: InputTokens=%v, OutputTokens=%v, TotalTokens=%v",
-					info.InputTokens, info.OutputTokens, info.TotalTokens)
-			}
-		}
-	}
+	// Log response timing
+	requestEndTime := time.Now()
+	duration := requestEndTime.Sub(requestStartTime)
+	p.logger.Infof("⏱️  LLM RESPONSE RECEIVED - Time: %s, Duration: %v", requestEndTime.Format(time.RFC3339), duration)
 
 	// Check if we have a valid response
 	if err != nil {
-		// 🆕 ENHANCED ERROR LOGGING FOR TURN 2 DEBUGGING
 		p.logger.Infof("❌ LLM generation failed - provider: %s, model: %s, error: %v", string(p.provider), p.modelID, err)
-		p.logger.Infof("❌ Error details - type: %T, message: %s", err, err.Error())
-
-		// 🆕 SERVER ERROR DETECTION AND LOGGING
-		if strings.Contains(err.Error(), "502") || strings.Contains(err.Error(), "Provider returned error") {
-			p.logger.Debugf("🔄 502 Bad Gateway error detected, will trigger fallback mechanism")
-			p.logger.Debugf("🔄 Server error details - provider: %s, model: %s, error: %s", string(p.provider), p.modelID, err.Error())
-		} else if strings.Contains(err.Error(), "503") {
-			p.logger.Debugf("🔄 503 Service Unavailable error detected, will trigger fallback mechanism")
-		} else if strings.Contains(err.Error(), "504") {
-			p.logger.Debugf("🔄 504 Gateway Timeout error detected, will trigger fallback mechanism")
-		} else if strings.Contains(err.Error(), "500") {
-			p.logger.Debugf("🔄 500 Internal Server Error detected, will trigger fallback mechanism")
-		}
-
-		// Log the messages that were sent to help debug
-		p.logger.Infof("📤 Messages sent to LLM - count: %d", len(messages))
-		for i, msg := range messages {
-			// Calculate actual content length from message parts
-			contentLength := 0
-			for _, part := range msg.Parts {
-				if textPart, ok := part.(llmtypes.TextContent); ok {
-					contentLength += len(textPart.Text)
-				}
-			}
-			p.logger.Infof("📤 Message %d - Role: %s, Content length: %d", i+1, msg.Role, contentLength)
-		}
 
 		// Emit LLM generation error event with rich debugging information
 		errorMetadata := LLMMetadata{
@@ -1319,12 +1231,9 @@ func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmty
 		return nil, err
 	}
 
-	// 🆕 ENHANCED RESPONSE VALIDATION LOGGING
-	p.logger.Infof("✅ LLM generation succeeded - provider: %s, model: %s", string(p.provider), p.modelID)
-
 	// Validate response structure
 	if resp == nil {
-		p.logger.Infof("❌ Response is nil - this will cause 'no results' error")
+		p.logger.Infof("❌ Response is nil")
 
 		// Emit LLM generation error event for nil response
 		errorMetadata := LLMMetadata{
@@ -1339,34 +1248,7 @@ func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmty
 	}
 
 	if resp.Choices == nil {
-		p.logger.Infof("❌ Response.Choices is nil - this will cause 'no results' error")
-
-		// Enhanced logging for ALL providers when choices is nil
-		p.logger.Errorf("🔍 Nil Choices Debug Information for %s:", string(p.provider))
-		p.logger.Errorf("   Model ID: %s", p.modelID)
-		p.logger.Errorf("   Provider: %s", string(p.provider))
-		p.logger.Errorf("   Response Type: %T", resp)
-		p.logger.Errorf("   Response Pointer: %p", resp)
-		p.logger.Errorf("   Response Nil: %v", resp == nil)
-
-		// Log the ENTIRE response structure for comprehensive debugging
-		p.logger.Errorf("🔍 COMPLETE LLM RESPONSE STRUCTURE:")
-		p.logger.Errorf("   Full Response: %+v", resp)
-
-		// Log the options that were passed to the LLM
-		p.logger.Errorf("🔍 LLM CALL OPTIONS:")
-		for i, opt := range options {
-			p.logger.Errorf("   Option %d: %T = %+v", i+1, opt, opt)
-		}
-
-		// Log the messages that were sent to the LLM
-		p.logger.Errorf("🔍 MESSAGES SENT TO LLM:")
-		for i, msg := range messages {
-			p.logger.Errorf("   Message %d - Role: %s, Parts: %d", i+1, msg.Role, len(msg.Parts))
-			for j, part := range msg.Parts {
-				p.logger.Errorf("     Part %d - Type: %T, Content: %+v", j+1, part, part)
-			}
-		}
+		p.logger.Infof("❌ Response.Choices is nil")
 
 		// Emit LLM generation error event for nil choices
 		errorMetadata := LLMMetadata{
@@ -1444,7 +1326,16 @@ func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmty
 			p.logger.Infof("✅ Valid tool call response detected - Content is empty but ToolCalls present")
 			p.logger.Infof("   Tool Calls: %d", len(firstChoice.ToolCalls))
 			for i, toolCall := range firstChoice.ToolCalls {
-				p.logger.Infof("   Tool Call %d: ID=%s, Type=%s", i+1, toolCall.ID, toolCall.Type)
+				functionName := "N/A"
+				arguments := "{}"
+				if toolCall.FunctionCall != nil {
+					functionName = toolCall.FunctionCall.Name
+					if toolCall.FunctionCall.Arguments != "" {
+						arguments = toolCall.FunctionCall.Arguments
+					}
+				}
+				p.logger.Infof("   Tool Call %d: ID=%s, Type=%s, Function=%s, Arguments=%s",
+					i+1, toolCall.ID, toolCall.Type, functionName, arguments)
 			}
 			// Note: Tool call events are emitted later in the function (line ~1594) to avoid duplication
 			// This is a valid response, continue processing
@@ -1567,6 +1458,23 @@ func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmty
 		if choice.GenerationInfo != nil {
 			p.logger.Infof("✅ GenerationInfo available: InputTokens=%v, OutputTokens=%v, TotalTokens=%v",
 				choice.GenerationInfo.InputTokens, choice.GenerationInfo.OutputTokens, choice.GenerationInfo.TotalTokens)
+		}
+
+		// Log tool calls if present (even when content is also present)
+		if len(choice.ToolCalls) > 0 {
+			p.logger.Infof("🔧 TOOL CALLS IN RESPONSE (%d):", len(choice.ToolCalls))
+			for i, toolCall := range choice.ToolCalls {
+				functionName := "N/A"
+				arguments := "{}"
+				if toolCall.FunctionCall != nil {
+					functionName = toolCall.FunctionCall.Name
+					if toolCall.FunctionCall.Arguments != "" {
+						arguments = toolCall.FunctionCall.Arguments
+					}
+				}
+				p.logger.Infof("   Tool Call %d: ID=%s, Type=%s, Function=%s, Arguments=%s",
+					i+1, toolCall.ID, toolCall.Type, functionName, arguments)
+			}
 		}
 
 		// Emit tool call events for all tool calls (even when content is present)

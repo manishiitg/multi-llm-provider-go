@@ -34,6 +34,11 @@ func NewBedrockAdapter(client *bedrockruntime.Client, modelID string, logger int
 	}
 }
 
+// GetModelID implements the llmtypes.Model interface
+func (b *BedrockAdapter) GetModelID() string {
+	return b.modelID
+}
+
 // GenerateContent implements the llmtypes.Model interface
 func (b *BedrockAdapter) GenerateContent(ctx context.Context, messages []llmtypes.MessageContent, options ...llmtypes.CallOption) (*llmtypes.ContentResponse, error) {
 	// Parse call options

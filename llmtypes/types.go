@@ -5,6 +5,9 @@ import "context"
 // Model is the core interface for LLM implementations
 type Model interface {
 	GenerateContent(ctx context.Context, messages []MessageContent, options ...CallOption) (*ContentResponse, error)
+	// GetModelID returns the model ID for this LLM instance
+	// Returns empty string if the model ID is not available
+	GetModelID() string
 }
 
 // ChatMessageType represents the role of a chat message

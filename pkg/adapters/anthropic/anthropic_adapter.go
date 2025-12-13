@@ -30,6 +30,11 @@ func NewAnthropicAdapter(client anthropic.Client, modelID string, logger interfa
 	}
 }
 
+// GetModelID implements the llmtypes.Model interface
+func (a *AnthropicAdapter) GetModelID() string {
+	return a.modelID
+}
+
 // GenerateContent implements the llmtypes.Model interface
 func (a *AnthropicAdapter) GenerateContent(ctx context.Context, messages []llmtypes.MessageContent, options ...llmtypes.CallOption) (*llmtypes.ContentResponse, error) {
 	// Parse call options

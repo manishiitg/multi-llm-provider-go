@@ -50,6 +50,11 @@ func NewOpenAIAdapter(client *openai.Client, modelID string, logger interfaces.L
 	}
 }
 
+// GetModelID implements the llmtypes.Model interface
+func (o *OpenAIAdapter) GetModelID() string {
+	return o.modelID
+}
+
 // GenerateContent implements the llmtypes.Model interface
 func (o *OpenAIAdapter) GenerateContent(ctx context.Context, messages []llmtypes.MessageContent, options ...llmtypes.CallOption) (*llmtypes.ContentResponse, error) {
 	// Parse call options

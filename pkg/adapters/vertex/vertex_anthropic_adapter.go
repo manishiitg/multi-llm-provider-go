@@ -37,6 +37,11 @@ func NewVertexAnthropicAdapter(projectID, locationID, modelID string, logger int
 	}
 }
 
+// GetModelID implements the llmtypes.Model interface
+func (v *VertexAnthropicAdapter) GetModelID() string {
+	return v.modelID
+}
+
 // GenerateContent implements the llmtypes.Model interface
 func (v *VertexAnthropicAdapter) GenerateContent(ctx context.Context, messages []llmtypes.MessageContent, options ...llmtypes.CallOption) (*llmtypes.ContentResponse, error) {
 	// Parse call options
